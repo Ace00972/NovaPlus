@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>NovaPlus</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #080b14;
+      width: 500px;
+      height: 400px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Rajdhani', sans-serif;
+      -webkit-app-region: drag;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 15% 20%, rgba(124, 58, 237, 0.18) 0%, transparent 55%),
+        radial-gradient(ellipse at 85% 80%, rgba(0, 245, 255, 0.12) 0%, transparent 55%);
+      pointer-events: none;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      z-index: 1;
+    }
+
+    .logo-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .logo-img {
+      width: 60px;
+      height: 60px;
+      border-radius: 14px;
+      object-fit: cover;
+    }
+
+    .logo-text {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 36px;
+      font-weight: 900;
+      letter-spacing: 6px;
+      background: linear-gradient(135deg, #00f5ff, #7c3aed);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .tagline {
+      font-size: 13px;
+      letter-spacing: 3px;
+      color: #64748b;
+      text-transform: uppercase;
+    }
+
+    .bar-wrap {
+      width: 260px;
+      height: 3px;
+      background: rgba(255,255,255,0.07);
+      border-radius: 99px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+
+    .bar-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, #00f5ff, #7c3aed);
+      box-shadow: 0 0 12px rgba(0, 245, 255, 0.5);
+      animation: load 2.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+
+    @keyframes load {
+      0%   { width: 0%; }
+      40%  { width: 55%; }
+      70%  { width: 75%; }
+      90%  { width: 90%; }
+      100% { width: 100%; }
+    }
+
+    .version {
+      font-size: 11px;
+      color: #334155;
+      letter-spacing: 2px;
+      margin-top: 4px;
+    }
+
+    /* Subtle border glow on the window */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      border: 1px solid rgba(0, 245, 255, 0.1);
+      border-radius: 12px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo-row">
+      <img class="logo-img" src="logo.png" alt="NovaPlus" onerror="this.style.display='none'">
+      <span class="logo-text">NOVAPLUS</span>
+    </div>
+    <div class="tagline">Your Personal Entertainment Hub</div>
+    <div class="bar-wrap">
+      <div class="bar-fill"></div>
+    </div>
+    <div class="version">v1.1.0</div>
+  </div>
+</body>
+</html>

@@ -1,57 +1,25 @@
 {
-  "name": "novaplus",
-  "version": "1.1.0",
-  "description": "Your personal entertainment hub",
-  "author": "Ace_Gen",
+  "name": "novaplus-media-center",
+  "version": "1.0.0",
+  "description": "A premium glassmorphic local media player built with Electron",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --win appx --publish never"
+    "dev": "electron . --inspect"
   },
-  "build": {
-    "appId": "AceGen.NovaPlus",
-    "productName": "NovaPlus",
-    "directories": {
-      "buildResources": "build"
-    },
-    "files": [
-      "index.html",
-      "main.js",
-      "splash.html",
-      "logo.png"
-    ],
-    "win": {
-      "target": "appx",
-      "icon": "logo.png"
-    },
-    "fileAssociations": [
-      {
-        "ext": ["mp4", "mkv", "avi", "mov", "wmv"],
-        "name": "Video File",
-        "description": "Play with NovaPlus",
-        "icon": "logo.png",
-        "role": "Viewer"
-      },
-      {
-        "ext": ["mp3", "flac", "wav", "ogg", "m4a"],
-        "name": "Audio File",
-        "description": "Play with NovaPlus",
-        "icon": "logo.png",
-        "role": "Viewer"
-      }
-    ],
-    "appx": {
-      "identityName": "AceGen.NovaPlus",
-      "publisher": "CN=DA1774DD-655C-4F47-A5A0-87F666A4BBBB",
-      "publisherDisplayName": "Ace_Gen",
-      "applicationId": "NovaPlus",
-      "backgroundColor": "#080b14",
-      "displayName": "NovaPlus",
-      "showNameOnTiles": true
-    }
+  "keywords": [
+    "media-player",
+    "electron",
+    "glassmorphism",
+    "video",
+    "music"
+  ],
+  "author": "NovaPlus Dev Team",
+  "license": "MIT",
+  "dependencies": {
+    "music-metadata": "^7.13.4"
   },
   "devDependencies": {
-    "electron": "^29.0.0",
-    "electron-builder": "^24.0.0"
+    "electron": "^28.2.0"
   }
 }

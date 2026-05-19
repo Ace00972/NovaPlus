@@ -1,11 +1,13 @@
 {
   "name": "novaplus-media-center",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "A premium glassmorphic local media player built with Electron",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron . --inspect"
+    "dev": "electron . --inspect",
+    "build": "electron-builder --win appx",
+    "build:installer": "electron-builder --win nsis"
   },
   "keywords": [
     "media-player",
@@ -14,12 +16,51 @@
     "video",
     "music"
   ],
-  "author": "NovaPlus Dev Team",
+  "author": {
+    "name": "Ace_Gen",
+    "email": "dravidwright00@gmail.com"
+  },
   "license": "MIT",
   "dependencies": {
     "music-metadata": "^7.13.4"
   },
   "devDependencies": {
-    "electron": "^28.2.0"
+    "electron": "^28.2.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.acegen.novaplus",
+    "productName": "NovaPlus",
+    "copyright": "Copyright © 2026 Ace_Gen",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "**/*",
+      "!dist/**",
+      "!node_modules/.cache/**",
+      "!**/*.map"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "appx",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/appx/Square310x310Logo.png"
+    },
+    "appx": {
+      "applicationId": "NovaPlusMediaCenter",
+      "backgroundColor": "#080a0f",
+      "displayName": "NovaPlus",
+      "identityName": "Ace_Gen.NovaPlusMediaCenter",
+      "publisher": "CN=cd6f7549-7a35-47e8-a629-f905a16c5ffe",
+      "publisherDisplayName": "Ace_Gen",
+      "languages": ["en-US"],
+      "assets": "build/appx",
+      "showNameOnTiles": true
+    }
   }
 }

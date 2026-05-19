@@ -30,14 +30,17 @@ function createWindow() {
             preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
-            webSecurity: true 
+            webSecurity: true
         }
     });
 
     mainWindow.loadFile('index.html');
-
-    // Remove menu
     mainWindow.setMenuBarVisibility(false);
+
+    // Allow external API calls (EmailJS, OMDB, Google Fonts)
+    mainWindow.webContents.session.webRequest.onBeforeSendHeaders((details, callback) => {
+        callback({ requestHeaders: { ...details.requestHeaders, 'Origin': 'https://www.emailjs.com' } });
+    });
 }
 
 // IPC Handlers

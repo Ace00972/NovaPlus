@@ -47,11 +47,7 @@
             </nav>
             
             <div class="sidebar-footer">
-                <div class="theme-picker">
-                    <div class="dot color-blue" data-color="#63b3ff"></div>
-                    <div class="dot color-purple" data-color="#a385ff"></div>
-                    <div class="dot color-pink" data-color="#ff85c1"></div>
-                </div>
+                <img src="build/appx/logo.png" alt="NovaPlus" class="sidebar-logo">
             </div>
         </aside>
 
@@ -182,6 +178,68 @@
                             <span>Arctic</span>
                         </div>
                     </div>
+
+                    <!-- Custom Wallpaper — Coming Soon -->
+                    <div class="coming-soon-block">
+                        <div class="coming-soon-icon">🖼️</div>
+                        <div class="coming-soon-text">
+                            <span class="coming-soon-label">Custom Wallpaper</span>
+                            <span class="coming-soon-badge">Coming Soon</span>
+                        </div>
+                        <p class="coming-soon-desc">Upload your own image as the app background.</p>
+                    </div>
+                </section>
+
+                <!-- Suggestions & Bug Reports -->
+                <section class="settings-section">
+                    <div class="settings-section-header">
+                        <h2>💬 Suggestions & Bug Reports</h2>
+                        <p>Found something broken or have an idea? Send it directly to the dev.</p>
+                    </div>
+
+                    <div class="feedback-type-row">
+                        <button class="feedback-type-btn active" data-type="bug">🐛 Bug Report</button>
+                        <button class="feedback-type-btn" data-type="suggestion">💡 Suggestion</button>
+                    </div>
+
+                    <textarea
+                        id="feedback-text"
+                        class="feedback-textarea"
+                        placeholder="Describe the bug — what happened and when…"
+                        rows="4"
+                    ></textarea>
+                    <div class="feedback-char-row">
+                        <span id="feedback-char" class="feedback-char">0 / 500</span>
+                    </div>
+
+                    <input
+                        type="email"
+                        id="feedback-email"
+                        class="settings-input"
+                        placeholder="Your email (optional — so we can reply to you)"
+                        style="margin-bottom: 0.6rem;"
+                    >
+                    <p class="feedback-video-note" id="feedback-video-note" style="display:none">
+                        📹 You've attached a video — please add your email above so we can follow up and request the file directly.
+                    </p>
+
+                    <!-- File Upload -->
+                    <div class="feedback-upload-area" id="feedback-drop-zone">
+                        <input type="file" id="feedback-files" multiple accept="image/*,video/*" style="display:none">
+                        <div class="feedback-upload-inner" id="feedback-upload-trigger">
+                            <span class="feedback-upload-icon">📎</span>
+                            <span class="feedback-upload-label">Attach screenshots or videos</span>
+                            <span class="feedback-upload-sub">Drag & drop or click to browse · Max 3 files · Images uploaded as links · Videos noted by filename</span>
+                        </div>
+                        <div id="feedback-file-list" class="feedback-file-list"></div>
+                    </div>
+
+                    <div class="feedback-footer">
+                        <button class="btn-accent" id="btn-send-feedback">
+                            <span id="feedback-btn-label">Send Feedback</span>
+                        </button>
+                    </div>
+                    <div id="feedback-status" class="omdb-status hidden"></div>
                 </section>
 
             </div><!-- /settings-view -->

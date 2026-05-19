@@ -19,6 +19,7 @@ const videoElement  = document.getElementById('video-element');
 const audioElement  = document.getElementById('audio-element');
 const searchInput   = document.getElementById('search-input');
 const settingsView  = document.getElementById('settings-view');
+const contentArea   = document.querySelector('.content');
 
 // ===================== INIT =====================
 document.addEventListener('DOMContentLoaded', async () => {
@@ -26,6 +27,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupEventListeners();
     setupSettingsListeners();
     if (state.movieFolders.length || state.musicFolders.length) {
+        // Show cached library instantly, then rescan in background
+        render();
         await rescanAll();
     }
     render();
@@ -42,6 +45,7 @@ function setupEventListeners() {
             document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             state.currentView = btn.dataset.view;
+            contentArea.scrollTop = 0;
             render();
         };
     });
@@ -129,9 +133,6 @@ function setupEventListeners() {
 
     musicVolume.oninput = e => { audioElement.volume = e.target.value; };
 
-    document.querySelectorAll('.dot').forEach(dot => {
-        dot.onclick = () => { applyAccent(dot.dataset.color); saveSettings(); };
-    });
 }
 
 // ===================== RENDER =====================
@@ -251,7 +252,6 @@ function fmtTime(s) {
 }
 
 // ===================== PERSISTENCE =====================
-// localStorage persists across Electron sessions (stored per app in user data)
 async function loadSettings() {
     try {
         const raw = localStorage.getItem('novaplus_v2');
@@ -262,6 +262,14 @@ async function loadSettings() {
             state.omdbKey      = p.omdbKey      || '';
             state.accentColor  = p.accentColor  || '#63b3ff';
             state.bgStyle      = p.bgStyle      || 'default';
+        }
+    } catch(e) {}
+
+    // Restore cached media library (with OMDB data) so it shows instantly on launch
+    try {
+        const mediaRaw = localStorage.getItem('novaplus_media');
+        if (mediaRaw) {
+            state.allMedia = JSON.parse(mediaRaw);
         }
     } catch(e) {}
 
@@ -280,6 +288,16 @@ function saveSettings() {
         accentColor:  state.accentColor,
         bgStyle:      state.bgStyle,
     }));
+}
+
+function saveMediaCache() {
+    try {
+        localStorage.setItem('novaplus_media', JSON.stringify(state.allMedia));
+    } catch(e) {
+        // If storage is full, clear and retry
+        localStorage.removeItem('novaplus_media');
+        try { localStorage.setItem('novaplus_media', JSON.stringify(state.allMedia)); } catch(e2) {}
+    }
 }
 
 // ===================== APPEARANCE =====================
@@ -327,6 +345,16 @@ async function removeFolderByType(type, folderPath) {
 
 async function rescanAll() {
     viewTitle.innerText = 'Scanning…';
+
+    // Build a lookup of existing OMDB data keyed by file path
+    const omdbCache = {};
+    for (const v of state.allMedia.videos) {
+        if (v.poster || v.rating || v.year) omdbCache[v.path] = {
+            poster: v.poster, year: v.year, genre: v.genre,
+            rating: v.rating, plot: v.plot
+        };
+    }
+
     const combined = { videos: [], audio: [] };
 
     for (const folder of state.movieFolders) {
@@ -343,7 +371,13 @@ async function rescanAll() {
         } catch(e) {}
     }
 
+    // Re-apply saved OMDB data onto freshly scanned videos
+    for (const v of combined.videos) {
+        if (omdbCache[v.path]) Object.assign(v, omdbCache[v.path]);
+    }
+
     state.allMedia = combined;
+    saveMediaCache(); // persist merged result immediately
     if (state.currentView !== 'settings') render();
     else viewTitle.innerText = 'Settings';
 }
@@ -423,6 +457,205 @@ function setupSettingsListeners() {
     document.querySelectorAll('.wallpaper-option').forEach(o => {
         o.onclick = () => { applyBg(o.dataset.bg); saveSettings(); };
     });
+
+    // ---- Feedback / Bug Report ----
+
+    // ⚠️ EmailJS credentials
+    const EMAILJS_SERVICE_ID  = 'service_hc8ryvu';
+    const EMAILJS_TEMPLATE_ID = 'template_yd4x8x6';
+    const EMAILJS_PUBLIC_KEY  = 'mBKibk4UMN4KKrF2f';
+
+    // Direct EmailJS REST API — no SDK needed, works in Electron
+    async function sendViaEmailJS(templateParams) {
+        const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                service_id:   EMAILJS_SERVICE_ID,
+                template_id:  EMAILJS_TEMPLATE_ID,
+                user_id:      EMAILJS_PUBLIC_KEY,
+                template_params: templateParams,
+            }),
+        });
+        if (!res.ok) {
+            const err = await res.text();
+            throw new Error(`EmailJS error ${res.status}: ${err}`);
+        }
+        return res;
+    }
+
+    let feedbackFiles = []; // { name, base64, type }
+
+    // Type toggle
+    document.querySelectorAll('.feedback-type-btn').forEach(btn => {
+        btn.onclick = () => {
+            document.querySelectorAll('.feedback-type-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById('feedback-text').placeholder =
+                btn.dataset.type === 'bug'
+                    ? 'Describe the bug — what happened and when…'
+                    : 'Share your idea or suggestion…';
+        };
+    });
+
+    // Char counter
+    const feedbackText = document.getElementById('feedback-text');
+    const feedbackChar = document.getElementById('feedback-char');
+    const MAX_CHARS = 500;
+    feedbackText.oninput = () => {
+        if (feedbackText.value.length > MAX_CHARS) feedbackText.value = feedbackText.value.slice(0, MAX_CHARS);
+        feedbackChar.innerText = `${feedbackText.value.length} / ${MAX_CHARS}`;
+        feedbackChar.style.color = feedbackText.value.length >= MAX_CHARS ? '#f87171' : 'var(--text-muted)';
+    };
+
+    // File input trigger
+    const fileInput      = document.getElementById('feedback-files');
+    const uploadTrigger  = document.getElementById('feedback-upload-trigger');
+    const dropZone       = document.getElementById('feedback-drop-zone');
+
+    uploadTrigger.onclick = () => fileInput.click();
+
+    fileInput.onchange = e => handleFeedbackFiles(Array.from(e.target.files));
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        handleFeedbackFiles(Array.from(e.dataTransfer.files));
+    });
+
+    function handleFeedbackFiles(files) {
+        const allowed = files.filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'));
+        const remaining = 3 - feedbackFiles.length;
+        const toAdd = allowed.slice(0, remaining);
+
+        toAdd.forEach(file => {
+            if (file.size > 10 * 1024 * 1024) {
+                showFeedbackStatus('error', `⚠ "${file.name}" exceeds 10MB limit.`);
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = e => {
+                feedbackFiles.push({ name: file.name, base64: e.target.result, type: file.type });
+                renderFeedbackFiles();
+                updateVideoNote();
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    function updateVideoNote() {
+        const hasVideo = feedbackFiles.some(f => f.type.startsWith('video/'));
+        document.getElementById('feedback-video-note').style.display = hasVideo ? 'block' : 'none';
+    }
+
+    function renderFeedbackFiles() {
+        const list = document.getElementById('feedback-file-list');
+        list.innerHTML = '';
+        feedbackFiles.forEach((f, i) => {
+            const el = document.createElement('div');
+            el.className = 'feedback-file-item';
+            const isImage = f.type.startsWith('image/');
+            el.innerHTML = `
+                ${isImage
+                    ? `<img src="${f.base64}" class="feedback-file-thumb" alt="${f.name}">`
+                    : `<div class="feedback-file-thumb feedback-file-video">🎬</div>`}
+                <span class="feedback-file-name">${f.name}</span>
+                <button class="feedback-file-remove" data-i="${i}">✕</button>`;
+            el.querySelector('.feedback-file-remove').onclick = () => {
+                feedbackFiles.splice(i, 1);
+                renderFeedbackFiles();
+                updateVideoNote();
+            };
+            list.appendChild(el);
+        });
+    }
+
+    function showFeedbackStatus(type, msg, duration = 4000) {
+        const el = document.getElementById('feedback-status');
+        el.className = 'omdb-status ' + type;
+        el.innerText = msg;
+        if (duration) setTimeout(() => el.classList.add('hidden'), duration);
+    }
+
+    // Send
+    const btnSend = document.getElementById('btn-send-feedback');
+    const btnLabel = document.getElementById('feedback-btn-label');
+
+    btnSend.onclick = async () => {
+        const text = feedbackText.value.trim();
+        const type = document.querySelector('.feedback-type-btn.active')?.dataset.type || 'bug';
+
+        if (!text) {
+            showFeedbackStatus('error', '⚠ Please write something before sending.');
+            return;
+        }
+
+        btnSend.disabled = true;
+        btnLabel.innerText = 'Uploading…';
+
+        // Upload images to imgbb (free, no account needed for base64 upload)
+        // Using imgbb free API — images hosted publicly, URL sent in email
+        const IMGBB_API_KEY = '8375c3f0dbbd9db6963c67df6de076b2';
+        let imageLinks = [];
+
+        for (const f of feedbackFiles) {
+            if (f.type.startsWith('video/')) {
+                // imgbb doesn't support video — note it clearly in the email
+                imageLinks.push(`📹 Video: ${f.name} (${Math.round(f.base64.length * 0.75 / 1024)}KB) — please reply to this email and we'll follow up for the video`);
+                continue;
+            }
+            try {
+                btnLabel.innerText = `Uploading ${imageLinks.length + 1}/${feedbackFiles.length}…`;
+                const base64Data = f.base64.split(',')[1];
+                const formData = new FormData();
+                formData.append('key', IMGBB_API_KEY);
+                formData.append('image', base64Data);
+                formData.append('name', f.name);
+
+                const res  = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: formData });
+                const data = await res.json();
+                if (data.success) {
+                    imageLinks.push(`🖼 ${f.name}: ${data.data.url}`);
+                } else {
+                    imageLinks.push(`🖼 ${f.name}: (upload failed)`);
+                }
+            } catch(e) {
+                imageLinks.push(`🖼 ${f.name}: (upload error — ${e.message})`);
+            }
+        }
+
+        btnLabel.innerText = 'Sending…';
+
+        const userEmail = document.getElementById('feedback-email').value.trim();
+
+        const templateParams = {
+            feedback_type: type === 'bug' ? '🐛 Bug Report' : '💡 Suggestion',
+            feedback_text: text,
+            attachments:   imageLinks.length > 0 ? imageLinks.join('\n') : 'None',
+            app_version:   '2.0.0',
+            sent_at:       new Date().toLocaleString(),
+            user_email:    userEmail || 'Not provided',
+            reply_to:      userEmail || 'dravidwright00@gmail.com',
+        };
+
+        try {
+            await sendViaEmailJS(templateParams);
+            feedbackText.value = '';
+            feedbackChar.innerText = `0 / ${MAX_CHARS}`;
+            document.getElementById('feedback-email').value = '';
+            feedbackFiles = [];
+            renderFeedbackFiles();
+            showFeedbackStatus('success', '✓ Sent! Thanks for the feedback.');
+        } catch(err) {
+            console.error('EmailJS error:', err);
+            showFeedbackStatus('error', `✗ Failed to send: ${err.message}`);
+        } finally {
+            btnSend.disabled = false;
+            btnLabel.innerText = 'Send Feedback';
+        }
+    };
 }
 
 function setupDropZone(zoneId, type) {
@@ -508,5 +741,6 @@ async function fetchOmdbMetadata(apiKey) {
     omdbStatus.innerText = `✓ Done — ${fetched} matched, ${failed} not found.`;
     setTimeout(() => omdbStatus.classList.add('hidden'), 4000);
 
+    saveMediaCache(); // persist posters/ratings so they survive app restarts
     if (state.currentView !== 'settings') render();
 }

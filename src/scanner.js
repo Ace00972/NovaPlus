@@ -65,10 +65,11 @@ async function scanDirectory(dirPath) {
 
 function cleanTitle(filename) {
     return filename
-        .replace(/\.[^/.]+$/, "") // Remove extension
-        .replace(/\b(1080p|720p|4k|2160p|bluray|hdtv|x264|x265|hevc|web-dl|webrip)\b/gi, "")
-        .replace(/[\.\_\-]/g, " ")
-        .replace(/\s+/g, " ")
+        .replace(/\.[^/.]+$/, '')                          // remove extension
+        .replace(/\b(19|20)\d{2}\b.*/i, '')               // strip year and everything after it
+        .replace(/\b(1080p|720p|480p|4k|2160p|bluray|blu-ray|bdrip|brrip|hdtv|hdcam|dvdrip|dvdscr|hdrip|webrip|web-dl|webdl|x264|x265|hevc|avc|xvid|divx|aac|ac3|dts|extended|theatrical|remastered|unrated|directors.cut|proper|repack|retail|limited|internal|readnfo|dubbed|subbed|multi|truefrench)\b.*/gi, '')
+        .replace(/[._\-]+/g, ' ')                          // dots/underscores/dashes to spaces
+        .replace(/\s+/g, ' ')
         .trim();
 }
 

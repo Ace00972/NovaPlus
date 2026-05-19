@@ -40,8 +40,8 @@
                 </div>
                 <div class="nav-group">
                     <label>Manage</label>
-                    <button class="nav-item" id="btn-add-folder">
-                        <span class="icon">➕</span> Add Folder
+                    <button class="nav-item" data-view="settings">
+                        <span class="icon">⚙️</span> Settings
                     </button>
                 </div>
             </nav>
@@ -64,28 +64,181 @@
                 </div>
             </header>
 
+            <!-- Media Grid (Home/Movies/Music) -->
             <div id="media-grid" class="media-grid">
-                <!-- Content injected via JS -->
                 <div class="empty-state">
                     <div class="empty-icon">📂</div>
                     <h2>No media found</h2>
                     <p>Click "Add Folder" to start building your library.</p>
                 </div>
             </div>
+
+            <!-- Settings View -->
+            <div id="settings-view" class="settings-view hidden">
+
+                <!-- Movie Folders Section -->
+                <section class="settings-section">
+                    <div class="settings-section-header">
+                        <h2>🎬 Movie Folders</h2>
+                        <p>Folders scanned for video files (.mp4, .mkv, .webm, .ogg)</p>
+                    </div>
+                    <div id="drop-zone-movies" class="drop-zone">
+                        <div class="drop-zone-inner">
+                            <div class="drop-icon">🎬</div>
+                            <p class="drop-label">Drag &amp; drop a movie folder here</p>
+                            <span class="drop-sub">or</span>
+                            <button class="btn-outline" id="btn-browse-movies">Browse for Folder</button>
+                        </div>
+                    </div>
+                    <div id="folder-list-movies" class="folder-list"></div>
+                </section>
+
+                <!-- Music Folders Section -->
+                <section class="settings-section">
+                    <div class="settings-section-header">
+                        <h2>🎵 Music Folders</h2>
+                        <p>Folders scanned for audio files (.mp3, .flac, .wav, .m4a)</p>
+                    </div>
+                    <div id="drop-zone-music" class="drop-zone">
+                        <div class="drop-zone-inner">
+                            <div class="drop-icon">🎵</div>
+                            <p class="drop-label">Drag &amp; drop a music folder here</p>
+                            <span class="drop-sub">or</span>
+                            <button class="btn-outline" id="btn-browse-music">Browse for Folder</button>
+                        </div>
+                    </div>
+                    <div id="folder-list-music" class="folder-list"></div>
+                </section>
+
+                <!-- OMDB Section -->
+                <section class="settings-section">
+                    <div class="settings-section-header">
+                        <h2>🎬 OMDB API</h2>
+                        <p>Fetch movie posters and metadata automatically. Get a free key at <span class="link-hint">omdbapi.com</span></p>
+                    </div>
+                    <div class="settings-input-row">
+                        <input
+                            type="text"
+                            id="omdb-api-key"
+                            class="settings-input"
+                            placeholder="Enter your OMDB API key..."
+                            autocomplete="off"
+                        >
+                        <button class="btn-accent" id="btn-save-omdb">Save Key</button>
+                        <button class="btn-refresh" id="btn-refresh-omdb" title="Fetch posters & metadata for all movies">⟳ Refresh</button>
+                    </div>
+                    <div id="omdb-status" class="omdb-status hidden"></div>
+                    <div id="omdb-progress" class="omdb-progress hidden">
+                        <div class="omdb-progress-bar">
+                            <div id="omdb-progress-fill" class="omdb-progress-fill"></div>
+                        </div>
+                        <span id="omdb-progress-label" class="omdb-progress-label">Fetching metadata…</span>
+                    </div>
+                </section>
+
+                <!-- Wallpaper / Background Section -->
+                <section class="settings-section">
+                    <div class="settings-section-header">
+                        <h2>🎨 Appearance</h2>
+                        <p>Choose an accent colour and background style.</p>
+                    </div>
+
+                    <label class="settings-label">Accent Colour</label>
+                    <div class="colour-grid">
+                        <div class="colour-swatch active" data-color="#63b3ff" style="background:#63b3ff;" title="Blue"></div>
+                        <div class="colour-swatch" data-color="#a385ff" style="background:#a385ff;" title="Purple"></div>
+                        <div class="colour-swatch" data-color="#ff85c1" style="background:#ff85c1;" title="Pink"></div>
+                        <div class="colour-swatch" data-color="#4ade80" style="background:#4ade80;" title="Green"></div>
+                        <div class="colour-swatch" data-color="#fb923c" style="background:#fb923c;" title="Orange"></div>
+                        <div class="colour-swatch" data-color="#f87171" style="background:#f87171;" title="Red"></div>
+                        <div class="colour-swatch" data-color="#facc15" style="background:#facc15;" title="Yellow"></div>
+                        <div class="colour-swatch" data-color="#22d3ee" style="background:#22d3ee;" title="Cyan"></div>
+                    </div>
+
+                    <label class="settings-label" style="margin-top:2rem;">Background Style</label>
+                    <div class="wallpaper-grid">
+                        <div class="wallpaper-option active" data-bg="default">
+                            <div class="wallpaper-preview default-bg"></div>
+                            <span>Default</span>
+                        </div>
+                        <div class="wallpaper-option" data-bg="nebula">
+                            <div class="wallpaper-preview nebula-bg"></div>
+                            <span>Nebula</span>
+                        </div>
+                        <div class="wallpaper-option" data-bg="midnight">
+                            <div class="wallpaper-preview midnight-bg"></div>
+                            <span>Midnight</span>
+                        </div>
+                        <div class="wallpaper-option" data-bg="forest">
+                            <div class="wallpaper-preview forest-bg"></div>
+                            <span>Forest</span>
+                        </div>
+                        <div class="wallpaper-option" data-bg="ember">
+                            <div class="wallpaper-preview ember-bg"></div>
+                            <span>Ember</span>
+                        </div>
+                        <div class="wallpaper-option" data-bg="arctic">
+                            <div class="wallpaper-preview arctic-bg"></div>
+                            <span>Arctic</span>
+                        </div>
+                    </div>
+                </section>
+
+            </div><!-- /settings-view -->
         </main>
     </div>
 
-    <!-- Fullscreen Player Overlay -->
+    <!-- Video Player Overlay (fullscreen) -->
     <div id="player-overlay" class="player-overlay hidden">
-        <button class="close-player">✕</button>
+        <button class="close-player" id="btn-close-video">✕</button>
         <div class="player-container">
-            <video id="video-element" controls></video>
-            <div id="audio-player-ui" class="audio-player-ui hidden">
-                <div class="album-art-large">🎵</div>
+            <video id="video-element"></video>
+        </div>
+        <!-- Custom video controls -->
+        <div class="player-controls" id="video-controls">
+            <div class="progress-wrap" id="video-progress">
+                <div class="progress-fill" id="video-progress-fill"></div>
+            </div>
+            <div class="controls-row">
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <button class="ctrl-btn" id="btn-play-pause">⏸</button>
+                    <span id="video-time" style="font-size:0.82rem;opacity:0.7">0:00 / 0:00</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <button class="ctrl-btn" id="btn-mute">🔊</button>
+                    <input type="range" id="volume-slider" min="0" max="1" step="0.05" value="1" style="width:80px;accent-color:var(--accent)">
+                    <button class="ctrl-btn" id="btn-fullscreen">⛶</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Music Player Popup -->
+    <div id="music-popup" class="music-popup hidden">
+        <div class="music-popup-inner">
+            <button class="music-close-btn" id="btn-close-music">✕</button>
+            <div class="music-art" id="music-art">🎵</div>
+            <div class="music-info">
                 <h2 id="now-playing-title">Song Title</h2>
                 <p id="now-playing-artist">Artist Name</p>
-                <audio id="audio-element" controls></audio>
             </div>
+            <div class="music-progress-wrap" id="music-progress">
+                <div class="music-progress-fill" id="music-progress-fill"></div>
+            </div>
+            <div class="music-time-row">
+                <span id="music-current">0:00</span>
+                <span id="music-duration">0:00</span>
+            </div>
+            <div class="music-controls">
+                <button class="music-ctrl-btn" id="music-btn-prev">⏮</button>
+                <button class="music-ctrl-btn music-play-btn" id="music-btn-play">⏸</button>
+                <button class="music-ctrl-btn" id="music-btn-next">⏭</button>
+            </div>
+            <div class="music-volume-row">
+                <span style="opacity:0.5;font-size:0.9rem;">🔊</span>
+                <input type="range" id="music-volume" min="0" max="1" step="0.05" value="1" style="flex:1;accent-color:var(--accent)">
+            </div>
+            <audio id="audio-element"></audio>
         </div>
     </div>
 

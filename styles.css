@@ -1141,3 +1141,25 @@ body.bg-arctic   { background-image: radial-gradient(circle at 50% 0%, rgba(30,5
     color: #fb923c;
     line-height: 1.5;
 }
+
+/* Skip indicator */
+.skip-indicator {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(8px);
+    color: white;
+    font-size: 1.4rem;
+    font-weight: 700;
+    padding: 12px 28px;
+    border-radius: 14px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 10002;
+}
+.skip-indicator.visible {
+    opacity: 1;
+}

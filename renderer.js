@@ -72,6 +72,73 @@ function setupEventListeners() {
     video.onplay  = () => btnPlayPause.innerText = '⏸';
     video.onpause = () => btnPlayPause.innerText = '▶';
 
+    // Keyboard shortcuts for video player
+    document.addEventListener('keydown', e => {
+        if (playerOverlay.classList.contains('hidden')) return;
+        switch(e.key) {
+            case 'ArrowRight':
+                e.preventDefault();
+                video.currentTime = Math.min(video.duration || 0, video.currentTime + 10);
+                showSkipIndicator('+10s');
+                break;
+            case 'ArrowLeft':
+                e.preventDefault();
+                video.currentTime = Math.max(0, video.currentTime - 10);
+                showSkipIndicator('-10s');
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                video.volume = Math.min(1, video.volume + 0.1);
+                volSlider.value = video.volume;
+                break;
+            case 'ArrowDown':
+                e.preventDefault();
+                video.volume = Math.max(0, video.volume - 0.1);
+                volSlider.value = video.volume;
+                break;
+            case ' ':
+                e.preventDefault();
+                video.paused ? video.play() : video.pause();
+                break;
+            case 'f':
+            case 'F':
+                e.preventDefault();
+                if (document.fullscreenElement) document.exitFullscreen();
+                else playerOverlay.requestFullscreen();
+                break;
+            case 'm':
+            case 'M':
+                e.preventDefault();
+                video.muted = !video.muted;
+                btnMute.innerText = video.muted ? '🔇' : '🔊';
+                break;
+        }
+    });
+
+    // Skip indicator (brief overlay text)
+    function showSkipIndicator(text) {
+        let ind = document.getElementById('skip-indicator');
+        if (!ind) {
+            ind = document.createElement('div');
+            ind.id = 'skip-indicator';
+            ind.className = 'skip-indicator';
+            playerOverlay.appendChild(ind);
+        }
+        ind.innerText = text;
+        ind.classList.add('visible');
+        clearTimeout(ind._timer);
+        ind._timer = setTimeout(() => ind.classList.remove('visible'), 800);
+    }
+
+    document.getElementById('btn-backward').onclick = () => {
+        video.currentTime = Math.max(0, video.currentTime - 10);
+        showSkipIndicator('-10s');
+    };
+    document.getElementById('btn-forward').onclick = () => {
+        video.currentTime = Math.min(video.duration || 0, video.currentTime + 10);
+        showSkipIndicator('+10s');
+    };
+
     video.ontimeupdate = () => {
         if (!video.duration) return;
         const pct = (video.currentTime / video.duration) * 100;
@@ -634,7 +701,7 @@ function setupSettingsListeners() {
             feedback_type: type === 'bug' ? '🐛 Bug Report' : '💡 Suggestion',
             feedback_text: text,
             attachments:   imageLinks.length > 0 ? imageLinks.join('\n') : 'None',
-            app_version:   '2.0.0',
+            app_version:   '2.0.1',
             sent_at:       new Date().toLocaleString(),
             user_email:    userEmail || 'Not provided',
             reply_to:      userEmail || 'dravidwright00@gmail.com',

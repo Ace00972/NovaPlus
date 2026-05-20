@@ -1,6 +1,6 @@
 {
-  "name": "novaplus-media-center",
-  "version": "2.0.0",
+  "name": "novaplus",
+  "version": "2.0.1",
   "description": "A premium glassmorphic local media player built with Electron",
   "main": "main.js",
   "scripts": {
@@ -26,7 +26,7 @@
   },
   "devDependencies": {
     "electron": "^28.2.0",
-    "electron-builder": "^24.9.1"
+    "electron-builder": "^24.13.3"
   },
   "build": {
     "appId": "com.acegen.novaplus",
@@ -49,17 +49,17 @@
           "arch": ["x64"]
         }
       ],
-      "icon": "build/appx/Square310x310Logo.png"
+      "icon": "build/appx/icon.ico",
+      "artifactName": "NovaPlus-Setup-${version}.appx"
     },
     "appx": {
-      "applicationId": "NovaPlusMediaCenter",
+      "applicationId": "NovaPlus",
       "backgroundColor": "#080a0f",
       "displayName": "NovaPlus",
-      "identityName": "Ace_Gen.NovaPlusMediaCenter",
-      "publisher": "CN=cd6f7549-7a35-47e8-a629-f905a16c5ffe",
+      "identityName": "AceGen.NovaPlus",
+      "publisher": "CN=DA1774DD-655C-4F47-A5A0-87F666A4BBBB",
       "publisherDisplayName": "Ace_Gen",
       "languages": ["en-US"],
-      "assets": "build/appx",
       "showNameOnTiles": true
     }
   }

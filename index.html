@@ -47,7 +47,7 @@
             </nav>
             
             <div class="sidebar-footer">
-                <img src="build/appx/logo.png" alt="NovaPlus" class="sidebar-logo">
+                <div class="version-badge">NovaPlus <span>v2.0.1</span></div>
             </div>
         </aside>
 
@@ -276,7 +276,13 @@
     <!-- Music Player Popup -->
     <div id="music-popup" class="music-popup hidden">
         <div class="music-popup-inner">
-            <button class="music-close-btn" id="btn-close-music">✕</button>
+            <div class="music-popup-titlebar">
+                <span class="music-popup-drag-label">🎵 Now Playing</span>
+                <div class="music-popup-btns">
+                    <button class="music-popup-btn" id="btn-music-restore" title="Open NovaPlus">⤢</button>
+                    <button class="music-close-btn" id="btn-close-music">✕</button>
+                </div>
+            </div>
             <div class="music-art" id="music-art">🎵</div>
             <div class="music-info">
                 <h2 id="now-playing-title">Song Title</h2>

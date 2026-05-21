@@ -1,4 +1,4 @@
-// ===================== STATE =====================
+// ===================== GLOBAL APPLICATION STATE =====================
 const state = {
     allMedia: { videos: [], audio: [] },
     currentView: 'home',
@@ -8,9 +8,14 @@ const state = {
     omdbKey: '',
     accentColor: '#63b3ff',
     bgStyle: 'default',
+    
+    // Core Media Playlist Control States
+    currentPlaylist: [],
+    currentTrackIndex: 0,
+    activeTrackItem: null
 };
 
-// ===================== UI REFS =====================
+// ===================== UI ELEMENT REFERENCES =====================
 const mediaGrid     = document.getElementById('media-grid');
 const viewTitle     = document.getElementById('view-title');
 const playerOverlay = document.getElementById('player-overlay');
@@ -21,13 +26,12 @@ const searchInput   = document.getElementById('search-input');
 const settingsView  = document.getElementById('settings-view');
 const contentArea   = document.querySelector('.content');
 
-// ===================== INIT =====================
+// ===================== APPLICATION INITIALIZATION =====================
 document.addEventListener('DOMContentLoaded', async () => {
     await loadSettings();
     setupEventListeners();
     setupSettingsListeners();
     if (state.movieFolders.length || state.musicFolders.length) {
-        // Show cached library instantly, then rescan in background
         render();
         await rescanAll();
     }
@@ -46,9 +50,43 @@ function setupEventListeners() {
             btn.classList.add('active');
             state.currentView = btn.dataset.view;
             contentArea.scrollTop = 0;
+            
+            // AUTOMATION: Handle music pop-up visual display states
+            if (state.currentView !== 'music') {
+                musicPopup.classList.add('hidden');
+                if (audioElement && !audioElement.paused && state.activeTrackItem) {
+                    triggerPipMode();
+                }
+            } else {
+                if (audioElement && audioElement.src !== '') {
+                    musicPopup.classList.remove('hidden');
+                }
+            }
             render();
         };
     });
+
+    // AUTOMATION: Handle main window minimization state syncing
+    if (window.electronAPI && window.electronAPI.onMainWindowMinimized) {
+        window.electronAPI.onMainWindowMinimized(() => {
+            if (audioElement && !audioElement.paused && state.activeTrackItem) {
+                musicPopup.classList.add('hidden');
+                triggerPipMode();
+            }
+        });
+    }
+
+    // AUTOMATION: Clear PiP container display when expansion is handled
+    if (window.electronAPI && window.electronAPI.onPipExpanded) {
+        window.electronAPI.onPipExpanded(() => {
+            if (state.currentView === 'music' && audioElement && audioElement.src !== '') {
+                musicPopup.classList.remove('hidden');
+            } else {
+                musicPopup.classList.add('hidden');
+            }
+            render();
+        });
+    }
 
     searchInput.oninput = e => {
         state.searchQuery = e.target.value.toLowerCase();
@@ -57,6 +95,61 @@ function setupEventListeners() {
 
     document.querySelector('.close-player').onclick = closePlayer;
     document.getElementById('btn-close-music').onclick = closeMusicPlayer;
+    document.getElementById('btn-music-restore').onclick = () => {
+        if (state.activeTrackItem) {
+            triggerPipMode();
+            musicPopup.classList.add('hidden');
+            window.electronAPI.minimize();
+        }
+    };
+    document.getElementById('btn-music-restore').onclick = () => {
+        if (state.activeTrackItem) {
+            triggerPipMode();
+            musicPopup.classList.add('hidden');
+            window.electronAPI.minimize();
+        }
+    };
+
+    // Handles layout instructions moving up from the floating PiP window frame
+    window.electronAPI.onPipCmd(cmd => {
+        const activePlayer = (videoElement && !videoElement.paused) ? videoElement : audioElement;
+        if (!activePlayer) return;
+
+        if (typeof cmd === 'string') {
+            switch (cmd) {
+                case 'playpause':
+                    activePlayer.paused ? activePlayer.play().catch(e => console.error(e)) : activePlayer.pause();
+                    break;
+                case 'prev':
+                    const prevIdx = state.currentTrackIndex - 1;
+                    if (prevIdx >= 0) { 
+                        state.currentTrackIndex = prevIdx; 
+                        playMedia(state.currentPlaylist[prevIdx]); 
+                    }
+                    break;
+                case 'next':
+                    const nextIdx = state.currentTrackIndex + 1;
+                    if (nextIdx < state.currentPlaylist.length) { 
+                        state.currentTrackIndex = nextIdx; 
+                        playMedia(state.currentPlaylist[nextIdx]); 
+                    }
+                    break;
+            }
+        } else if (cmd && typeof cmd === 'object') {
+            switch (cmd.action) {
+                case 'volume':
+                    activePlayer.volume = Math.max(0, Math.min(1, cmd.value / 100));
+                    break;
+                case 'seek':
+                    if (activePlayer.duration) {
+                        activePlayer.currentTime = cmd.value * activePlayer.duration;
+                    }
+                    break;
+            }
+        }
+    });
+
+    window.electronAPI.onPipClosed(() => { state.pipActive = false; });
 
     // ---- Custom video controls ----
     const video        = videoElement;
@@ -72,7 +165,6 @@ function setupEventListeners() {
     video.onplay  = () => btnPlayPause.innerText = '⏸';
     video.onpause = () => btnPlayPause.innerText = '▶';
 
-    // Keyboard shortcuts for video player
     document.addEventListener('keydown', e => {
         if (playerOverlay.classList.contains('hidden')) return;
         switch(e.key) {
@@ -115,7 +207,6 @@ function setupEventListeners() {
         }
     });
 
-    // Skip indicator (brief overlay text)
     function showSkipIndicator(text) {
         let ind = document.getElementById('skip-indicator');
         if (!ind) {
@@ -162,7 +253,6 @@ function setupEventListeners() {
         else playerOverlay.requestFullscreen();
     };
 
-    // Hide controls on mouse idle
     let hideTimer;
     playerOverlay.onmousemove = () => {
         document.getElementById('video-controls').style.opacity = '1';
@@ -179,11 +269,28 @@ function setupEventListeners() {
     const musicCurrent      = document.getElementById('music-current');
     const musicDuration     = document.getElementById('music-duration');
     const musicBtnPlay      = document.getElementById('music-btn-play');
+    const musicBtnPrev      = document.getElementById('music-btn-prev');
+    const musicBtnNext      = document.getElementById('music-btn-next');
     const musicVolume       = document.getElementById('music-volume');
 
     musicBtnPlay.onclick = () => audioElement.paused ? audioElement.play() : audioElement.pause();
     audioElement.onplay  = () => musicBtnPlay.innerText = '⏸';
     audioElement.onpause = () => musicBtnPlay.innerText = '▶';
+
+    musicBtnPrev.onclick = () => {
+        const prevIdx = state.currentTrackIndex - 1;
+        if (prevIdx >= 0) {
+            state.currentTrackIndex = prevIdx;
+            playMedia(state.currentPlaylist[prevIdx]);
+        }
+    };
+    musicBtnNext.onclick = () => {
+        const nextIdx = state.currentTrackIndex + 1;
+        if (nextIdx < state.currentPlaylist.length) {
+            state.currentTrackIndex = nextIdx;
+            playMedia(state.currentPlaylist[nextIdx]);
+        }
+    };
 
     audioElement.ontimeupdate = () => {
         if (!audioElement.duration) return;
@@ -191,6 +298,13 @@ function setupEventListeners() {
         musicProgressFill.style.width = pct + '%';
         musicCurrent.innerText  = fmtTime(audioElement.currentTime);
         musicDuration.innerText = fmtTime(audioElement.duration);
+        
+        if (window.electronAPI && window.electronAPI.pipTime) {
+            window.electronAPI.pipTime({
+                current:  audioElement.currentTime,
+                duration: audioElement.duration,
+            });
+        }
     };
 
     musicProgress.onclick = e => {
@@ -200,9 +314,40 @@ function setupEventListeners() {
 
     musicVolume.oninput = e => { audioElement.volume = e.target.value; };
 
+    if (videoElement && audioElement) {
+        [videoElement, audioElement].forEach(player => {
+            player.addEventListener('play', () => {
+                if (window.electronAPI && window.electronAPI.pipState) window.electronAPI.pipState(true);
+            });
+            player.addEventListener('pause', () => {
+                if (window.electronAPI && window.electronAPI.pipState) window.electronAPI.pipState(false);
+            });
+        });
+    }
 }
 
-// ===================== RENDER =====================
+function triggerPipMode() {
+    if (!state.activeTrackItem) return;
+    state.pipActive = true;
+    window.electronAPI.pipOpen({
+        title:  state.activeTrackItem.name || state.activeTrackItem.title || 'Unknown Track',
+        artist: state.activeTrackItem.artist || 'Unknown Artist',
+        poster: state.activeTrackItem.poster || null,
+        accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+    });
+}
+
+function updatePipTrack() {
+    if (!state.activeTrackItem || !state.pipActive) return;
+    window.electronAPI.pipOpen({
+        title:  state.activeTrackItem.name || state.activeTrackItem.title || 'Unknown Track',
+        artist: state.activeTrackItem.artist || 'Unknown Artist',
+        poster: state.activeTrackItem.poster || null,
+        accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+    });
+}
+
+// ===================== RENDER LAYOUT HANDLERS =====================
 function render() {
     const isSettings = state.currentView === 'settings';
     mediaGrid.classList.toggle('hidden', isSettings);
@@ -244,7 +389,9 @@ function render() {
         return;
     }
 
-    items.forEach(item => {
+    state.currentPlaylist = items.filter(i => i.type === 'audio');
+
+    items.forEach((item, idx) => {
         const card = document.createElement('div');
         card.className = 'card';
 
@@ -258,33 +405,74 @@ function render() {
 
         const ratingBadge = item.rating ? `<div class="card-rating">⭐ ${item.rating}</div>` : '';
 
+        const resumeTime = getResumeTime(item.path);
+        const resumeBadge = resumeTime > 0
+            ? `<div class="card-resume">▶ ${fmtTime(resumeTime)}</div>`
+            : '';
+
         card.innerHTML = `
-            <div class="card-art">${artContent}${ratingBadge}</div>
+            <div class="card-art">${artContent}${ratingBadge}${resumeBadge}</div>
             <div class="card-info">
                 <h3>${item.name}</h3>
                 <p>${meta}</p>
             </div>`;
-        card.onclick = () => playMedia(item);
+
+        card.onclick = () => {
+            state.currentTrackIndex = state.currentPlaylist.indexOf(item);
+            playMedia(item);
+        };
         mediaGrid.appendChild(card);
     });
 }
 
-// ===================== PLAYER =====================
-function playMedia(item) {
+// ===================== CORE PLAYER ARCHITECTURE =====================
+function playMedia(item, fromPlaylist = false) {
     const mediaUrl = window.electronAPI.toMediaUrl(item.path);
 
     if (item.type === 'video') {
-        playerOverlay.classList.remove('hidden');
         musicPopup.classList.add('hidden');
+        playerOverlay.classList.remove('hidden');
         videoElement.src = mediaUrl;
-        videoElement.play();
+
+        const saved = getResumeTime(item.path);
+        videoElement.onloadedmetadata = () => {
+            if (saved && saved < videoElement.duration - 5) {
+                videoElement.currentTime = saved;
+            }
+            videoElement.play();
+        };
+
+        videoElement.ontimeupdate = () => {
+            if (!videoElement.duration) return;
+            saveResumeTime(item.path, videoElement.currentTime);
+            const pct = (videoElement.currentTime / videoElement.duration) * 100;
+            document.getElementById('video-progress-fill').style.width = pct + '%';
+            document.getElementById('video-time').innerText =
+                `${fmtTime(videoElement.currentTime)} / ${fmtTime(videoElement.duration)}`;
+        };
+
+        videoElement.onended = () => {
+            saveResumeTime(item.path, 0);
+            render();
+        };
+
     } else {
-        musicPopup.classList.remove('hidden');
+        state.activeTrackItem = item;
         playerOverlay.classList.add('hidden');
+        
+        if (state.currentView === 'music') {
+            musicPopup.classList.remove('hidden');
+        } else {
+            musicPopup.classList.add('hidden');
+            triggerPipMode();
+        }
+
+        // Update PiP title if already open
+        updatePipTrack();
+
         document.getElementById('now-playing-title').innerText  = item.name;
         document.getElementById('now-playing-artist').innerText = item.artist || 'Unknown Artist';
 
-        // Album art — use poster if available else emoji
         const artEl = document.getElementById('music-art');
         if (item.poster) {
             artEl.innerHTML = `<img src="${item.poster}" style="width:100%;height:100%;object-fit:cover;border-radius:20px;">`;
@@ -292,9 +480,59 @@ function playMedia(item) {
             artEl.innerText = '🎵';
         }
 
+        audioElement.pause();
+        audioElement.currentTime = 0;
         audioElement.src = mediaUrl;
-        audioElement.play();
+
+        const saved = getResumeTime(item.path);
+        audioElement.onloadedmetadata = () => {
+            if (saved && saved < audioElement.duration - 5) {
+                audioElement.currentTime = saved;
+            } else {
+                audioElement.currentTime = 0;
+            }
+            audioElement.play().catch(e => console.error("Audio playback interrupted:", e));
+        };
+
+        audioElement.onplay  = () => {
+            document.getElementById('music-btn-play').innerText = '⏸';
+            window.electronAPI.pipState(true);
+        };
+        audioElement.onpause = () => {
+            document.getElementById('music-btn-play').innerText = '▶';
+            window.electronAPI.pipState(false);
+        };
+        audioElement.onended = () => {
+            saveResumeTime(item.path, 0);
+            
+            const nextIdx = state.currentTrackIndex + 1;
+            if (nextIdx < state.currentPlaylist.length) {
+                state.currentTrackIndex = nextIdx;
+                playMedia(state.currentPlaylist[nextIdx]);
+            } else {
+                musicPopup.classList.add('hidden');
+                state.activeTrackItem = null;
+                render();
+            }
+        };
     }
+}
+
+// ===================== POSITION TRACKING =====================
+function saveResumeTime(filePath, time) {
+    try {
+        const key = 'novaplus_resume';
+        const data = JSON.parse(localStorage.getItem(key) || '{}');
+        data[filePath] = Math.floor(time);
+        localStorage.setItem(key, JSON.stringify(data));
+    } catch(e) {}
+}
+
+function getResumeTime(filePath) {
+    try {
+        const data = JSON.parse(localStorage.getItem('novaplus_resume') || '{}');
+        return data[filePath] || 0;
+    } catch(e) { return 0; }
 }
 
 function closePlayer() {
@@ -302,23 +540,34 @@ function closePlayer() {
     videoElement.src = '';
     playerOverlay.classList.add('hidden');
     document.getElementById('video-progress-fill').style.width = '0%';
+    render(); 
 }
 
 function closeMusicPlayer() {
     audioElement.pause();
     audioElement.src = '';
+    audioElement.ontimeupdate = null;
+    audioElement.onplay  = null;
+    audioElement.onpause = null;
+    audioElement.onended = null;
     musicPopup.classList.add('hidden');
+    state.activeTrackItem = null;
     document.getElementById('music-progress-fill').style.width = '0%';
+    document.getElementById('music-current').innerText  = '0:00';
+    document.getElementById('music-duration').innerText = '0:00';
+    render();
 }
 
 function fmtTime(s) {
-    if (isNaN(s)) return '0:00';
-    const m = Math.floor(s / 60);
+    if (!s || isNaN(s)) return '0:00';
+    const h   = Math.floor(s / 3600);
+    const m   = Math.floor((s % 3600) / 60);
     const sec = Math.floor(s % 60).toString().padStart(2, '0');
+    if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${sec}`;
     return `${m}:${sec}`;
 }
 
-// ===================== PERSISTENCE =====================
+// ===================== SETTINGS & CONFIGURATION CONFIGS =====================
 async function loadSettings() {
     try {
         const raw = localStorage.getItem('novaplus_v2');
@@ -332,7 +581,6 @@ async function loadSettings() {
         }
     } catch(e) {}
 
-    // Restore cached media library (with OMDB data) so it shows instantly on launch
     try {
         const mediaRaw = localStorage.getItem('novaplus_media');
         if (mediaRaw) {
@@ -357,17 +605,6 @@ function saveSettings() {
     }));
 }
 
-function saveMediaCache() {
-    try {
-        localStorage.setItem('novaplus_media', JSON.stringify(state.allMedia));
-    } catch(e) {
-        // If storage is full, clear and retry
-        localStorage.removeItem('novaplus_media');
-        try { localStorage.setItem('novaplus_media', JSON.stringify(state.allMedia)); } catch(e2) {}
-    }
-}
-
-// ===================== APPEARANCE =====================
 function applyAccent(color) {
     document.documentElement.style.setProperty('--accent', color);
     document.documentElement.style.setProperty('--accent-glow', color + '44');
@@ -384,7 +621,6 @@ function applyBg(style) {
         o.classList.toggle('active', o.dataset.bg === style));
 }
 
-// ===================== FOLDERS =====================
 function getFolderList(type) {
     return type === 'movies' ? state.movieFolders : state.musicFolders;
 }
@@ -412,8 +648,6 @@ async function removeFolderByType(type, folderPath) {
 
 async function rescanAll() {
     viewTitle.innerText = 'Scanning…';
-
-    // Build a lookup of existing OMDB data keyed by file path
     const omdbCache = {};
     for (const v of state.allMedia.videos) {
         if (v.poster || v.rating || v.year) omdbCache[v.path] = {
@@ -421,32 +655,35 @@ async function rescanAll() {
             rating: v.rating, plot: v.plot
         };
     }
-
     const combined = { videos: [], audio: [] };
-
     for (const folder of state.movieFolders) {
         try {
             const r = await window.electronAPI.scanMedia(folder.path);
             combined.videos.push(...r.videos);
         } catch(e) {}
     }
-
     for (const folder of state.musicFolders) {
         try {
             const r = await window.electronAPI.scanMedia(folder.path);
             combined.audio.push(...r.audio);
         } catch(e) {}
     }
-
-    // Re-apply saved OMDB data onto freshly scanned videos
     for (const v of combined.videos) {
         if (omdbCache[v.path]) Object.assign(v, omdbCache[v.path]);
     }
-
     state.allMedia = combined;
-    saveMediaCache(); // persist merged result immediately
+    saveMediaCache(); 
     if (state.currentView !== 'settings') render();
     else viewTitle.innerText = 'Settings';
+}
+
+function saveMediaCache() {
+    try {
+        localStorage.setItem('novaplus_media', JSON.stringify(state.allMedia));
+    } catch(e) {
+        localStorage.removeItem('novaplus_media');
+        try { localStorage.setItem('novaplus_media', JSON.stringify(state.allMedia)); } catch(e2) {}
+    }
 }
 
 function renderFolderList(type) {
@@ -454,13 +691,11 @@ function renderFolderList(type) {
     const list   = document.getElementById(listId);
     if (!list) return;
     list.innerHTML = '';
-
     const folders = getFolderList(type);
     if (folders.length === 0) {
         list.innerHTML = `<p class="folder-empty-hint">No folders added yet.</p>`;
         return;
     }
-
     folders.forEach(folder => {
         const item = document.createElement('div');
         item.className = 'folder-item';
@@ -478,23 +713,19 @@ function renderFolderList(type) {
     });
 }
 
-// ===================== SETTINGS LISTENERS =====================
 function setupSettingsListeners() {
     document.getElementById('btn-browse-movies').onclick = async () => {
         const p = await window.electronAPI.selectFolder();
         if (p) await addFolderByType('movies', p);
     };
-
     document.getElementById('btn-browse-music').onclick = async () => {
         const p = await window.electronAPI.selectFolder();
         if (p) await addFolderByType('music', p);
     };
-
     setupDropZone('drop-zone-movies', 'movies');
     setupDropZone('drop-zone-music',  'music');
 
     const omdbStatus = document.getElementById('omdb-status');
-
     document.getElementById('btn-save-omdb').onclick = () => {
         const val = document.getElementById('omdb-api-key').value.trim();
         state.omdbKey = val;
@@ -504,7 +735,12 @@ function setupSettingsListeners() {
         setTimeout(() => omdbStatus.classList.add('hidden'), 3000);
     };
 
-    document.getElementById('btn-refresh-omdb').onclick = async () => {
+    const progressWrap  = document.getElementById('omdb-progress-wrap');
+    const progressFill  = document.getElementById('omdb-progress-fill');
+    const progressLabel = document.getElementById('omdb-progress-label');
+    const btnRefresh    = document.getElementById('btn-refresh-omdb');
+
+    btnRefresh.onclick = async () => {
         const key = document.getElementById('omdb-api-key').value.trim() || state.omdbKey;
         if (!key) {
             omdbStatus.className = 'omdb-status error';
@@ -514,25 +750,26 @@ function setupSettingsListeners() {
         }
         state.omdbKey = key;
         saveSettings();
-        await fetchOmdbMetadata(key);
+        
+        // Setup visual feedback hooks
+        progressWrap.classList.remove('hidden');
+        btnRefresh.disabled = true;
+        btnRefresh.innerText = 'Syncing…';
+        
+        await fetchOmdbMetadata(key, progressFill, progressLabel, progressWrap, btnRefresh, omdbStatus);
     };
 
     document.querySelectorAll('.colour-swatch').forEach(s => {
         s.onclick = () => { applyAccent(s.dataset.color); saveSettings(); };
     });
-
     document.querySelectorAll('.wallpaper-option').forEach(o => {
         o.onclick = () => { applyBg(o.dataset.bg); saveSettings(); };
     });
 
-    // ---- Feedback / Bug Report ----
-
-    // ⚠️ EmailJS credentials
     const EMAILJS_SERVICE_ID  = 'service_hc8ryvu';
     const EMAILJS_TEMPLATE_ID = 'template_yd4x8x6';
     const EMAILJS_PUBLIC_KEY  = 'mBKibk4UMN4KKrF2f';
 
-    // Direct EmailJS REST API — no SDK needed, works in Electron
     async function sendViaEmailJS(templateParams) {
         const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
             method: 'POST',
@@ -544,77 +781,40 @@ function setupSettingsListeners() {
                 template_params: templateParams,
             }),
         });
-        if (!res.ok) {
-            const err = await res.text();
-            throw new Error(`EmailJS error ${res.status}: ${err}`);
-        }
+        if (!res.ok) throw new Error(`EmailJS error ${res.status}`);
         return res;
     }
 
-    let feedbackFiles = []; // { name, base64, type }
-
-    // Type toggle
+    let feedbackFiles = [];
     document.querySelectorAll('.feedback-type-btn').forEach(btn => {
         btn.onclick = () => {
             document.querySelectorAll('.feedback-type-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             document.getElementById('feedback-text').placeholder =
-                btn.dataset.type === 'bug'
-                    ? 'Describe the bug — what happened and when…'
-                    : 'Share your idea or suggestion…';
+                btn.dataset.type === 'bug' ? 'Describe the bug…' : 'Share your idea…';
         };
     });
 
-    // Char counter
     const feedbackText = document.getElementById('feedback-text');
     const feedbackChar = document.getElementById('feedback-char');
-    const MAX_CHARS = 500;
     feedbackText.oninput = () => {
-        if (feedbackText.value.length > MAX_CHARS) feedbackText.value = feedbackText.value.slice(0, MAX_CHARS);
-        feedbackChar.innerText = `${feedbackText.value.length} / ${MAX_CHARS}`;
-        feedbackChar.style.color = feedbackText.value.length >= MAX_CHARS ? '#f87171' : 'var(--text-muted)';
+        if (feedbackText.value.length > 500) feedbackText.value = feedbackText.value.slice(0, 500);
+        feedbackChar.innerText = `${feedbackText.value.length} / 500`;
     };
 
-    // File input trigger
-    const fileInput      = document.getElementById('feedback-files');
-    const uploadTrigger  = document.getElementById('feedback-upload-trigger');
-    const dropZone       = document.getElementById('feedback-drop-zone');
-
-    uploadTrigger.onclick = () => fileInput.click();
-
+    const fileInput = document.getElementById('feedback-files');
+    document.getElementById('feedback-upload-trigger').onclick = () => fileInput.click();
     fileInput.onchange = e => handleFeedbackFiles(Array.from(e.target.files));
 
-    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-    dropZone.addEventListener('drop', e => {
-        e.preventDefault();
-        dropZone.classList.remove('drag-over');
-        handleFeedbackFiles(Array.from(e.dataTransfer.files));
-    });
-
     function handleFeedbackFiles(files) {
-        const allowed = files.filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'));
-        const remaining = 3 - feedbackFiles.length;
-        const toAdd = allowed.slice(0, remaining);
-
-        toAdd.forEach(file => {
-            if (file.size > 10 * 1024 * 1024) {
-                showFeedbackStatus('error', `⚠ "${file.name}" exceeds 10MB limit.`);
-                return;
-            }
+        files.filter(f => f.type.startsWith('image/') || f.type.startsWith('video/')).slice(0, 3 - feedbackFiles.length).forEach(file => {
             const reader = new FileReader();
             reader.onload = e => {
                 feedbackFiles.push({ name: file.name, base64: e.target.result, type: file.type });
                 renderFeedbackFiles();
-                updateVideoNote();
             };
             reader.readAsDataURL(file);
         });
-    }
-
-    function updateVideoNote() {
-        const hasVideo = feedbackFiles.some(f => f.type.startsWith('video/'));
-        document.getElementById('feedback-video-note').style.display = hasVideo ? 'block' : 'none';
     }
 
     function renderFeedbackFiles() {
@@ -623,105 +823,34 @@ function setupSettingsListeners() {
         feedbackFiles.forEach((f, i) => {
             const el = document.createElement('div');
             el.className = 'feedback-file-item';
-            const isImage = f.type.startsWith('image/');
-            el.innerHTML = `
-                ${isImage
-                    ? `<img src="${f.base64}" class="feedback-file-thumb" alt="${f.name}">`
-                    : `<div class="feedback-file-thumb feedback-file-video">🎬</div>`}
-                <span class="feedback-file-name">${f.name}</span>
-                <button class="feedback-file-remove" data-i="${i}">✕</button>`;
-            el.querySelector('.feedback-file-remove').onclick = () => {
-                feedbackFiles.splice(i, 1);
-                renderFeedbackFiles();
-                updateVideoNote();
-            };
+            el.innerHTML = `<span>${f.name}</span><button class="feedback-file-remove">✕</button>`;
+            el.querySelector('.feedback-file-remove').onclick = () => { feedbackFiles.splice(i, 1); renderFeedbackFiles(); };
             list.appendChild(el);
         });
     }
 
-    function showFeedbackStatus(type, msg, duration = 4000) {
-        const el = document.getElementById('feedback-status');
-        el.className = 'omdb-status ' + type;
-        el.innerText = msg;
-        if (duration) setTimeout(() => el.classList.add('hidden'), duration);
-    }
-
-    // Send
     const btnSend = document.getElementById('btn-send-feedback');
-    const btnLabel = document.getElementById('feedback-btn-label');
-
     btnSend.onclick = async () => {
         const text = feedbackText.value.trim();
-        const type = document.querySelector('.feedback-type-btn.active')?.dataset.type || 'bug';
-
-        if (!text) {
-            showFeedbackStatus('error', '⚠ Please write something before sending.');
-            return;
-        }
-
+        if (!text) return;
         btnSend.disabled = true;
-        btnLabel.innerText = 'Uploading…';
-
-        // Upload images to imgbb (free, no account needed for base64 upload)
-        // Using imgbb free API — images hosted publicly, URL sent in email
-        const IMGBB_API_KEY = '8375c3f0dbbd9db6963c67df6de076b2';
-        let imageLinks = [];
-
-        for (const f of feedbackFiles) {
-            if (f.type.startsWith('video/')) {
-                // imgbb doesn't support video — note it clearly in the email
-                imageLinks.push(`📹 Video: ${f.name} (${Math.round(f.base64.length * 0.75 / 1024)}KB) — please reply to this email and we'll follow up for the video`);
-                continue;
-            }
-            try {
-                btnLabel.innerText = `Uploading ${imageLinks.length + 1}/${feedbackFiles.length}…`;
-                const base64Data = f.base64.split(',')[1];
-                const formData = new FormData();
-                formData.append('key', IMGBB_API_KEY);
-                formData.append('image', base64Data);
-                formData.append('name', f.name);
-
-                const res  = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: formData });
-                const data = await res.json();
-                if (data.success) {
-                    imageLinks.push(`🖼 ${f.name}: ${data.data.url}`);
-                } else {
-                    imageLinks.push(`🖼 ${f.name}: (upload failed)`);
-                }
-            } catch(e) {
-                imageLinks.push(`🖼 ${f.name}: (upload error — ${e.message})`);
-            }
-        }
-
-        btnLabel.innerText = 'Sending…';
-
-        const userEmail = document.getElementById('feedback-email').value.trim();
-
+        
         const templateParams = {
-            feedback_type: type === 'bug' ? '🐛 Bug Report' : '💡 Suggestion',
+            feedback_type: 'NovaHub Tracker',
             feedback_text: text,
-            attachments:   imageLinks.length > 0 ? imageLinks.join('\n') : 'None',
-            app_version:   '2.0.1',
-            sent_at:       new Date().toLocaleString(),
-            user_email:    userEmail || 'Not provided',
-            reply_to:      userEmail || 'dravidwright00@gmail.com',
+            attachments: 'None',
+            app_version: '2.0.1',
+            sent_at: new Date().toLocaleString(),
+            user_email: document.getElementById('feedback-email').value.trim() || 'Not provided',
         };
 
         try {
             await sendViaEmailJS(templateParams);
             feedbackText.value = '';
-            feedbackChar.innerText = `0 / ${MAX_CHARS}`;
-            document.getElementById('feedback-email').value = '';
             feedbackFiles = [];
             renderFeedbackFiles();
-            showFeedbackStatus('success', '✓ Sent! Thanks for the feedback.');
-        } catch(err) {
-            console.error('EmailJS error:', err);
-            showFeedbackStatus('error', `✗ Failed to send: ${err.message}`);
-        } finally {
-            btnSend.disabled = false;
-            btnLabel.innerText = 'Send Feedback';
-        }
+        } catch(err) { console.error(err); }
+        finally { btnSend.disabled = false; }
     };
 }
 
@@ -742,42 +871,29 @@ function setupDropZone(zoneId, type) {
     });
 }
 
-// ===================== OMDB =====================
-async function fetchOmdbMetadata(apiKey) {
-    const videos     = state.allMedia.videos;
-    const omdbStatus = document.getElementById('omdb-status');
-
+// ===================== METADATA OMDB SYNC MODULE =====================
+async function fetchOmdbMetadata(apiKey, progressFill, progressLabel, progressWrap, btnRefresh, omdbStatus) {
+    const videos = state.allMedia.videos;
     if (videos.length === 0) {
-        omdbStatus.className = 'omdb-status error';
-        omdbStatus.innerText = '⚠ No movies in library to fetch metadata for.';
-        setTimeout(() => omdbStatus.classList.add('hidden'), 3000);
+        if (progressWrap) progressWrap.classList.add('hidden');
+        if (btnRefresh) {
+            btnRefresh.disabled = false;
+            btnRefresh.innerText = '⟳ Refresh';
+        }
         return;
     }
-
-    const progressWrap  = document.getElementById('omdb-progress');
-    const progressFill  = document.getElementById('omdb-progress-fill');
-    const progressLabel = document.getElementById('omdb-progress-label');
-    const btnRefresh    = document.getElementById('btn-refresh-omdb');
-
-    progressWrap.classList.remove('hidden');
-    omdbStatus.classList.add('hidden');
-    btnRefresh.disabled  = true;
-    btnRefresh.innerText = '⟳ Fetching…';
 
     let done = 0, fetched = 0, failed = 0;
 
     for (const video of videos) {
         try {
-            // 1st attempt: exact title match
             let res  = await fetch(`https://www.omdbapi.com/?t=${encodeURIComponent(video.name)}&apikey=${apiKey}&type=movie`);
             let data = await res.json();
-
-            // 2nd attempt: search and take the first result
-            if (data.Response !== 'True') {
+            
+            if (data.Response === 'False' && data.Error === "Movie not found!") {
                 res  = await fetch(`https://www.omdbapi.com/?s=${encodeURIComponent(video.name)}&apikey=${apiKey}&type=movie`);
                 data = await res.json();
                 if (data.Response === 'True' && data.Search && data.Search.length > 0) {
-                    // Fetch full details for the top search result
                     const imdbId = data.Search[0].imdbID;
                     res  = await fetch(`https://www.omdbapi.com/?i=${imdbId}&apikey=${apiKey}`);
                     data = await res.json();
@@ -795,19 +911,23 @@ async function fetchOmdbMetadata(apiKey) {
         } catch(e) { failed++; }
 
         done++;
-        progressFill.style.width = Math.round((done / videos.length) * 100) + '%';
-        progressLabel.innerText  = `Fetching metadata… ${done} / ${videos.length}`;
+        if (progressFill)  progressFill.style.width = Math.round((done / videos.length) * 100) + '%';
+        if (progressLabel) progressLabel.innerText  = `Fetching metadata… ${done} / ${videos.length}`;
     }
 
-    progressWrap.classList.add('hidden');
-    progressFill.style.width = '0%';
-    btnRefresh.disabled  = false;
-    btnRefresh.innerText = '⟳ Refresh';
+    if (progressWrap) progressWrap.classList.add('hidden');
+    if (progressFill) progressFill.style.width = '0%';
+    if (btnRefresh) {
+        btnRefresh.disabled  = false;
+        btnRefresh.innerText = '⟳ Refresh';
+    }
 
-    omdbStatus.className = 'omdb-status success';
-    omdbStatus.innerText = `✓ Done — ${fetched} matched, ${failed} not found.`;
-    setTimeout(() => omdbStatus.classList.add('hidden'), 4000);
+    if (omdbStatus) {
+        omdbStatus.className = 'omdb-status success';
+        omdbStatus.innerText = `✓ Done — ${fetched} matched, ${failed} not found.`;
+        setTimeout(() => omdbStatus.classList.add('hidden'), 4000);
+    }
 
-    saveMediaCache(); // persist posters/ratings so they survive app restarts
-    if (state.currentView !== 'settings') render();
+    saveMediaCache();
+    render();
 }

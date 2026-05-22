@@ -81,6 +81,9 @@ function setupEventListeners() {
         window.electronAPI.onPipExpanded(() => {
             if (state.currentView === 'music' && audioElement && audioElement.src !== '') {
                 musicPopup.classList.remove('hidden');
+                // Re-sync volume slider to actual audio volume on expand
+                const musicVolume = document.getElementById('music-volume');
+                if (musicVolume) musicVolume.value = audioElement.volume;
             } else {
                 musicPopup.classList.add('hidden');
             }
@@ -139,6 +142,11 @@ function setupEventListeners() {
             switch (cmd.action) {
                 case 'volume':
                     activePlayer.volume = Math.max(0, Math.min(1, cmd.value / 100));
+                    // Sync the corresponding slider UI so it matches when returning to NovaPlus
+                    const volEl = activePlayer === audioElement
+                        ? document.getElementById('music-volume')
+                        : document.getElementById('volume-slider');
+                    if (volEl) volEl.value = activePlayer.volume;
                     break;
                 case 'seek':
                     if (activePlayer.duration) {
@@ -334,6 +342,7 @@ function triggerPipMode() {
         artist: state.activeTrackItem.artist || 'Unknown Artist',
         poster: state.activeTrackItem.poster || null,
         accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+        volume: audioElement ? audioElement.volume : 1,
     });
 }
 
@@ -344,6 +353,7 @@ function updatePipTrack() {
         artist: state.activeTrackItem.artist || 'Unknown Artist',
         poster: state.activeTrackItem.poster || null,
         accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
+        volume: audioElement ? audioElement.volume : 1,
     });
 }
 

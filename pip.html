@@ -262,7 +262,7 @@
         </div>
         <div class="vol-wrap">
             <span>🔊</span>
-            <input type="range" class="slider" id="pip-vol" min="0" max="100" value="80">
+            <input type="range" class="slider" id="pip-vol" min="0" max="100" value="100">
         </div>
     </div>
 </div>
@@ -291,6 +291,11 @@
             img.style.display = 'none';
         }
         document.getElementById('btn-play').innerText = '⏸';
+
+        // Sync volume slider to the actual current volume from the main player
+        if (typeof track.volume === 'number') {
+            document.getElementById('pip-vol').value = Math.round(track.volume * 100);
+        }
     });
 
     // Handle time tick synchronization mapping

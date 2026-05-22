@@ -735,39 +735,50 @@ function setupSettingsListeners() {
     setupDropZone('drop-zone-movies', 'movies');
     setupDropZone('drop-zone-music',  'music');
 
-    const omdbStatus = document.getElementById('omdb-status');
-    document.getElementById('btn-save-omdb').onclick = () => {
-        const val = document.getElementById('omdb-api-key').value.trim();
-        state.omdbKey = val;
-        saveSettings();
-        omdbStatus.className = 'omdb-status ' + (val ? 'success' : 'error');
-        omdbStatus.innerText  = val ? '✓ API key saved!' : '⚠ Key is empty.';
-        setTimeout(() => omdbStatus.classList.add('hidden'), 3000);
-    };
+    const btnSaveOmdb = document.getElementById('btn-save-omdb');
+    if (btnSaveOmdb) {
+        btnSaveOmdb.onclick = () => {
+            const omdbStatus = document.getElementById('omdb-status');
+            const val = document.getElementById('omdb-api-key').value.trim();
+            state.omdbKey = val;
+            saveSettings();
+            if (omdbStatus) {
+                omdbStatus.className = 'omdb-status ' + (val ? 'success' : 'error');
+                omdbStatus.innerText  = val ? '✓ API key saved!' : '⚠ Key is empty.';
+                setTimeout(() => omdbStatus.classList.add('hidden'), 3000);
+            }
+        };
+    }
 
-    const progressWrap  = document.getElementById('omdb-progress-wrap');
-    const progressFill  = document.getElementById('omdb-progress-fill');
-    const progressLabel = document.getElementById('omdb-progress-label');
-    const btnRefresh    = document.getElementById('btn-refresh-omdb');
+    const btnRefresh = document.getElementById('btn-refresh-omdb');
 
-    btnRefresh.onclick = async () => {
-        const key = document.getElementById('omdb-api-key').value.trim() || state.omdbKey;
-        if (!key) {
-            omdbStatus.className = 'omdb-status error';
-            omdbStatus.innerText = '⚠ Enter and save an API key first.';
-            setTimeout(() => omdbStatus.classList.add('hidden'), 3000);
-            return;
-        }
-        state.omdbKey = key;
-        saveSettings();
-        
-        // Setup visual feedback hooks
-        progressWrap.classList.remove('hidden');
-        btnRefresh.disabled = true;
-        btnRefresh.innerText = 'Syncing…';
-        
-        await fetchOmdbMetadata(key, progressFill, progressLabel, progressWrap, btnRefresh, omdbStatus);
-    };
+    if (btnRefresh) {
+        btnRefresh.onclick = async () => {
+            // Re-query these each click so they're always fresh from the live DOM
+            const progressWrap  = document.getElementById('omdb-progress-wrap');
+            const progressFill  = document.getElementById('omdb-progress-fill');
+            const progressLabel = document.getElementById('omdb-progress-label');
+            const statusEl      = document.getElementById('omdb-status');
+
+            const key = document.getElementById('omdb-api-key').value.trim() || state.omdbKey;
+            if (!key) {
+                if (statusEl) {
+                    statusEl.className = 'omdb-status error';
+                    statusEl.innerText = '⚠ Enter and save an API key first.';
+                    setTimeout(() => statusEl.classList.add('hidden'), 3000);
+                }
+                return;
+            }
+            state.omdbKey = key;
+            saveSettings();
+
+            if (progressWrap) progressWrap.classList.remove('hidden');
+            btnRefresh.disabled  = true;
+            btnRefresh.innerText = 'Syncing…';
+
+            await fetchOmdbMetadata(key, progressFill, progressLabel, progressWrap, btnRefresh, statusEl);
+        };
+    }
 
     document.querySelectorAll('.colour-swatch').forEach(s => {
         s.onclick = () => { applyAccent(s.dataset.color); saveSettings(); };
@@ -882,6 +893,19 @@ function setupDropZone(zoneId, type) {
 }
 
 // ===================== METADATA OMDB SYNC MODULE =====================
+
+// Strips resolution tags, codec info, year suffixes, and file extension
+// so OMDB can actually match filenames like "Inception.2010.1080p.BluRay.x264.mkv"
+function cleanMovieName(filename) {
+    let name = filename.replace(/\.[^.]+$/, ''); // remove extension
+    name = name
+        .replace(/[\._\s]*(19|20)\d{2}[\._\s].*/i, '')
+        .replace(/[\._\s]*(4k|2160p|1080p|720p|480p|bluray|bdrip|brrip|webrip|web-dl|dvdrip|hdtv|xvid|x264|x265|hevc|aac|ac3|dts|hdrip|proper|repack|extended|theatrical).*/i, '')
+        .replace(/[._]/g, ' ')
+        .trim();
+    return name || filename;
+}
+
 async function fetchOmdbMetadata(apiKey, progressFill, progressLabel, progressWrap, btnRefresh, omdbStatus) {
     const videos = state.allMedia.videos;
     if (videos.length === 0) {
@@ -897,11 +921,14 @@ async function fetchOmdbMetadata(apiKey, progressFill, progressLabel, progressWr
 
     for (const video of videos) {
         try {
-            let res  = await fetch(`https://www.omdbapi.com/?t=${encodeURIComponent(video.name)}&apikey=${apiKey}&type=movie`);
+            const cleanName = cleanMovieName(video.name);
+
+            let res  = await fetch(`https://www.omdbapi.com/?t=${encodeURIComponent(cleanName)}&apikey=${apiKey}&type=movie`);
             let data = await res.json();
-            
-            if (data.Response === 'False' && data.Error === "Movie not found!") {
-                res  = await fetch(`https://www.omdbapi.com/?s=${encodeURIComponent(video.name)}&apikey=${apiKey}&type=movie`);
+
+            // Fallback: search by keyword if exact title fails
+            if (data.Response === 'False') {
+                res  = await fetch(`https://www.omdbapi.com/?s=${encodeURIComponent(cleanName)}&apikey=${apiKey}&type=movie`);
                 data = await res.json();
                 if (data.Response === 'True' && data.Search && data.Search.length > 0) {
                     const imdbId = data.Search[0].imdbID;

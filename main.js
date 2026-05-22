@@ -29,7 +29,14 @@ function createWindow() {
     mainWindow.loadFile('index.html');
     mainWindow.setMenuBarVisibility(false);
     mainWindow.webContents.session.webRequest.onBeforeSendHeaders((details, callback) => {
-        callback({ requestHeaders: { ...details.requestHeaders, 'Origin': 'https://www.emailjs.com' } });
+        const headers = { ...details.requestHeaders };
+        if (details.url.includes('omdbapi.com')) {
+            // OMDB requires no special Origin, just pass through cleanly
+            delete headers['Origin'];
+        } else {
+            headers['Origin'] = 'https://www.emailjs.com';
+        }
+        callback({ requestHeaders: headers });
     });
 
     mainWindow.on('minimize', () => {

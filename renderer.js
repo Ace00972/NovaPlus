@@ -900,7 +900,7 @@ function setupSettingsListeners() {
             feedback_type: 'NovaHub Tracker',
             feedback_text: text,
             attachments: 'None',
-            app_version: '2.0.1',
+            app_version: '2.1.2',
             sent_at: new Date().toLocaleString(),
             user_email: document.getElementById('feedback-email').value.trim() || 'Not provided',
         };

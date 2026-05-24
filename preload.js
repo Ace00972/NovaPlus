@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
     minimize:     () => ipcRenderer.send('window-minimize'),
@@ -7,6 +7,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     selectFolder: () => ipcRenderer.invoke('dialog:openDirectory'),
     scanMedia:    (p) => ipcRenderer.invoke('media:scan', p),
     toMediaUrl:   (p) => `nova-media://${p}`,
+
+    // Resolves a drag-and-dropped File object to its real filesystem path.
+    // Required in Electron builds with contextIsolation: true where
+    // file.path is no longer populated in the renderer process.
+    getPathForFile: (file) => {
+        try {
+            if (webUtils && typeof webUtils.getPathForFile === 'function') {
+                return webUtils.getPathForFile(file);
+            }
+        } catch(e) {}
+        // Fallback for older Electron versions that still populate file.path
+        return file.path || null;
+    },
 
     // PiP Actions (renderer/pip -> main)
     pipOpen:   (info) => ipcRenderer.send('pip-open', info),

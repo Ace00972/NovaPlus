@@ -12,7 +12,10 @@ const state = {
     // Core Media Playlist Control States
     currentPlaylist: [],
     currentTrackIndex: 0,
-    activeTrackItem: null
+    activeTrackItem: null,
+
+    // FIX: Track the currently playing video item so ontimeupdate can reference it
+    currentVideoItem: null
 };
 
 // ===================== UI ELEMENT REFERENCES =====================
@@ -27,6 +30,12 @@ const settingsView  = document.getElementById('settings-view');
 const contentArea   = document.querySelector('.content');
 
 // ===================== APPLICATION INITIALIZATION =====================
+
+// Prevent Electron from navigating the whole window if a file is
+// accidentally dropped outside a designated drop zone.
+document.addEventListener('dragover',  e => e.preventDefault());
+document.addEventListener('drop',      e => e.preventDefault());
+
 document.addEventListener('DOMContentLoaded', async () => {
     await loadSettings();
     setupEventListeners();
@@ -98,13 +107,6 @@ function setupEventListeners() {
 
     document.querySelector('.close-player').onclick = closePlayer;
     document.getElementById('btn-close-music').onclick = closeMusicPlayer;
-    document.getElementById('btn-music-restore').onclick = () => {
-        if (state.activeTrackItem) {
-            triggerPipMode();
-            musicPopup.classList.add('hidden');
-            window.electronAPI.minimize();
-        }
-    };
     document.getElementById('btn-music-restore').onclick = () => {
         if (state.activeTrackItem) {
             triggerPipMode();
@@ -238,12 +240,8 @@ function setupEventListeners() {
         showSkipIndicator('+10s');
     };
 
-    video.ontimeupdate = () => {
-        if (!video.duration) return;
-        const pct = (video.currentTime / video.duration) * 100;
-        progressFill.style.width = pct + '%';
-        timeLabel.innerText = `${fmtTime(video.currentTime)} / ${fmtTime(video.duration)}`;
-    };
+    // ontimeupdate is installed fresh by closePlayer() after each pipeline reset
+    // and by playMedia() on first play — keeping it out of here prevents duplicates.
 
     progressWrap.onclick = e => {
         const rect = progressWrap.getBoundingClientRect();
@@ -261,13 +259,21 @@ function setupEventListeners() {
         else playerOverlay.requestFullscreen();
     };
 
+    // FIX: Declare hideTimer at this scope so closePlayer() can clear it
     let hideTimer;
+    playerOverlay._clearHideTimer = () => clearTimeout(hideTimer);
+
     playerOverlay.onmousemove = () => {
         document.getElementById('video-controls').style.opacity = '1';
+        // FIX: Also restore the cursor on mouse move inside the player
+        playerOverlay.style.cursor = '';
         clearTimeout(hideTimer);
         hideTimer = setTimeout(() => {
-            if (!video.paused)
+            if (!video.paused) {
                 document.getElementById('video-controls').style.opacity = '0';
+                // FIX: Hide cursor when controls auto-hide during playback
+                playerOverlay.style.cursor = 'none';
+            }
         }, 2500);
     };
 
@@ -440,8 +446,24 @@ function playMedia(item, fromPlaylist = false) {
     const mediaUrl = window.electronAPI.toMediaUrl(item.path);
 
     if (item.type === 'video') {
+        state.currentVideoItem = item;
+
         musicPopup.classList.add('hidden');
         playerOverlay.classList.remove('hidden');
+
+        // Install ontimeupdate fresh each time playMedia runs for video.
+        // closePlayer() nulls it out as part of pipeline teardown, so we
+        // must re-register it here to ensure it's always present during playback.
+        const progressFill = document.getElementById('video-progress-fill');
+        const timeLabel    = document.getElementById('video-time');
+        videoElement.ontimeupdate = () => {
+            if (!videoElement.duration || !state.currentVideoItem) return;
+            saveResumeTime(state.currentVideoItem.path, videoElement.currentTime);
+            const pct = (videoElement.currentTime / videoElement.duration) * 100;
+            progressFill.style.width = pct + '%';
+            timeLabel.innerText = `${fmtTime(videoElement.currentTime)} / ${fmtTime(videoElement.duration)}`;
+        };
+
         videoElement.src = mediaUrl;
 
         const saved = getResumeTime(item.path);
@@ -450,15 +472,6 @@ function playMedia(item, fromPlaylist = false) {
                 videoElement.currentTime = saved;
             }
             videoElement.play();
-        };
-
-        videoElement.ontimeupdate = () => {
-            if (!videoElement.duration) return;
-            saveResumeTime(item.path, videoElement.currentTime);
-            const pct = (videoElement.currentTime / videoElement.duration) * 100;
-            document.getElementById('video-progress-fill').style.width = pct + '%';
-            document.getElementById('video-time').innerText =
-                `${fmtTime(videoElement.currentTime)} / ${fmtTime(videoElement.duration)}`;
         };
 
         videoElement.onended = () => {
@@ -546,20 +559,47 @@ function getResumeTime(filePath) {
 }
 
 function closePlayer() {
+    // Step 1: Null out ALL handlers BEFORE touching src/load so none of them
+    // fire during the pipeline teardown sequence below.
+    videoElement.onloadedmetadata = null;
+    videoElement.onended          = null;
+    videoElement.ontimeupdate     = null;
+    videoElement.onplay           = null;
+    videoElement.onpause          = null;
+    videoElement.onerror          = null;
+    state.currentVideoItem        = null;
+
+    // Step 2: Properly abort the Electron/Chromium media pipeline.
+    // Setting src='' alone does NOT abort buffering — the decoder keeps running
+    // in the background and blocks the renderer thread, causing the freeze.
+    // The correct sequence is: pause → removeAttribute → load().
     videoElement.pause();
-    videoElement.src = '';
+    videoElement.removeAttribute('src');
+    videoElement.load(); // forces the pipeline to fully abort and reset
+
+    // Step 3: Hide the overlay and restore cursor/controls state.
     playerOverlay.classList.add('hidden');
+    if (playerOverlay._clearHideTimer) playerOverlay._clearHideTimer();
+    playerOverlay.style.cursor = '';
+    document.getElementById('video-controls').style.opacity = '1';
     document.getElementById('video-progress-fill').style.width = '0%';
-    render(); 
+    document.getElementById('video-time').innerText = '0:00 / 0:00';
+
+    render();
 }
 
 function closeMusicPlayer() {
-    audioElement.pause();
-    audioElement.src = '';
+    // Null handlers first, then abort the pipeline properly (same reason as closePlayer).
     audioElement.ontimeupdate = null;
-    audioElement.onplay  = null;
-    audioElement.onpause = null;
-    audioElement.onended = null;
+    audioElement.onplay       = null;
+    audioElement.onpause      = null;
+    audioElement.onended      = null;
+    audioElement.onloadedmetadata = null;
+
+    audioElement.pause();
+    audioElement.removeAttribute('src');
+    audioElement.load();
+
     musicPopup.classList.add('hidden');
     state.activeTrackItem = null;
     document.getElementById('music-progress-fill').style.width = '0%';
@@ -878,17 +918,39 @@ function setupSettingsListeners() {
 function setupDropZone(zoneId, type) {
     const zone = document.getElementById(zoneId);
     if (!zone) return;
-    zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
-    zone.addEventListener('dragleave', ()  => zone.classList.remove('drag-over'));
+
+    zone.addEventListener('dragover', e => {
+        try { e.preventDefault(); zone.classList.add('drag-over'); }
+        catch(err) { console.error('dragover error:', err); }
+    });
+
+    zone.addEventListener('dragleave', e => {
+        try { zone.classList.remove('drag-over'); }
+        catch(err) { console.error('dragleave error:', err); }
+    });
+
     zone.addEventListener('drop', async e => {
-        e.preventDefault();
-        zone.classList.remove('drag-over');
-        for (const item of Array.from(e.dataTransfer.items || [])) {
-            if (item.kind === 'file') {
+        try {
+            e.preventDefault();
+            zone.classList.remove('drag-over');
+            const items = Array.from(e.dataTransfer.items || []);
+            for (const item of items) {
+                if (item.kind !== 'file') continue;
                 const file = item.getAsFile();
-                if (file && file.path) await addFolderByType(type, file.path);
+                if (!file) continue;
+                // file.path works in older Electron; newer builds with
+                // contextIsolation need webUtils.getPathForFile().
+                // Try both so it works regardless of Electron version.
+                let filePath = null;
+                try {
+                    if (window.electronAPI && typeof window.electronAPI.getPathForFile === 'function') {
+                        filePath = window.electronAPI.getPathForFile(file);
+                    }
+                } catch(_) {}
+                if (!filePath) filePath = file.path || null;
+                if (filePath) await addFolderByType(type, filePath);
             }
-        }
+        } catch(err) { console.error('drop error:', err); }
     });
 }
 

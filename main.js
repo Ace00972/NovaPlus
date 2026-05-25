@@ -2,6 +2,18 @@ const { app, BrowserWindow, ipcMain, dialog, protocol } = require('electron');
 const path = require('path');
 const { scanDirectory } = require('./src/scanner');
 
+// ── DEBUG: Catch any unhandled error in the main process and log it.
+// These will appear in the terminal where you ran `npm start`.
+// Remove these once the freeze is diagnosed.
+process.on('uncaughtException', (err) => {
+    console.error('═══ MAIN PROCESS UNCAUGHT EXCEPTION ═══');
+    console.error(err);
+});
+process.on('unhandledRejection', (reason) => {
+    console.error('═══ MAIN PROCESS UNHANDLED REJECTION ═══');
+    console.error(reason);
+});
+
 let mainWindow;
 let pipWindow;
 
@@ -9,7 +21,7 @@ function registerMediaProtocol() {
     protocol.registerFileProtocol('nova-media', (request, callback) => {
         const url = request.url.replace('nova-media://', '');
         try { return callback(decodeURIComponent(url)); }
-        catch (e) { console.error(e); }
+        catch (e) { console.error('nova-media protocol error:', e); }
     });
 }
 
@@ -28,15 +40,30 @@ function createWindow() {
     });
     mainWindow.loadFile('index.html');
     mainWindow.setMenuBarVisibility(false);
+
+    // ── DEBUG: Opens DevTools for the renderer process automatically.
+    // Remove once the freeze is diagnosed.
+    mainWindow.webContents.openDevTools();
+
     mainWindow.webContents.session.webRequest.onBeforeSendHeaders((details, callback) => {
         const headers = { ...details.requestHeaders };
         if (details.url.includes('omdbapi.com')) {
-            // OMDB requires no special Origin, just pass through cleanly
             delete headers['Origin'];
         } else {
             headers['Origin'] = 'https://www.emailjs.com';
         }
         callback({ requestHeaders: headers });
+    });
+
+    // ── DEBUG: Log every renderer process crash with full details.
+    mainWindow.webContents.on('render-process-gone', (event, details) => {
+        console.error('═══ RENDERER PROCESS GONE ═══', details);
+    });
+    mainWindow.webContents.on('unresponsive', () => {
+        console.error('═══ RENDERER BECAME UNRESPONSIVE ═══');
+    });
+    mainWindow.webContents.on('responsive', () => {
+        console.log('── Renderer became responsive again');
     });
 
     mainWindow.on('minimize', () => {
@@ -72,6 +99,11 @@ function createPip(trackInfo) {
 
     pipWindow.webContents.on('did-finish-load', () => {
         pipWindow.webContents.send('pip-track', trackInfo);
+    });
+
+    // ── DEBUG: Log PiP renderer crashes too
+    pipWindow.webContents.on('render-process-gone', (event, details) => {
+        console.error('═══ PIP RENDERER PROCESS GONE ═══', details);
     });
 
     pipWindow.on('closed', () => {

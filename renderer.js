@@ -31,6 +31,13 @@ const contentArea   = document.querySelector('.content');
 
 // ===================== APPLICATION INITIALIZATION =====================
 
+// Expose debug vars to window so DevTools console tests can inspect them
+Object.defineProperties(window, {
+    _resumeWriteCache:  { get: () => _resumeWriteCache },
+    _resumeWriteTimer:  { get: () => _resumeWriteTimer },
+    _resumeSaveEnabled: { get: () => _resumeSaveEnabled },
+});
+
 // Prevent Electron from navigating the whole window if a file is
 // accidentally dropped outside a designated drop zone.
 document.addEventListener('dragover',  e => e.preventDefault());
@@ -172,20 +179,20 @@ function setupEventListeners() {
     const btnFs        = document.getElementById('btn-fullscreen');
 
     btnPlayPause.onclick = () => video.paused ? video.play() : video.pause();
-    video.onplay  = () => btnPlayPause.innerText = '⏸';
-    video.onpause = () => btnPlayPause.innerText = '▶';
+    video.onplay  = () => { const ic = document.getElementById('icon-playpause'); if(ic) ic.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>'; };
+    video.onpause = () => { const ic = document.getElementById('icon-playpause'); if(ic) ic.innerHTML = '<path d="M8 5v14l11-7z"/>'; };
 
     document.addEventListener('keydown', e => {
         if (playerOverlay.classList.contains('hidden')) return;
         switch(e.key) {
             case 'ArrowRight':
                 e.preventDefault();
-                video.currentTime = Math.min(video.duration || 0, video.currentTime + 10);
+                debouncedSeek(() => Math.min(video.duration || 0, video.currentTime + 10));
                 showSkipIndicator('+10s');
                 break;
             case 'ArrowLeft':
                 e.preventDefault();
-                video.currentTime = Math.max(0, video.currentTime - 10);
+                debouncedSeek(() => Math.max(0, video.currentTime - 10));
                 showSkipIndicator('-10s');
                 break;
             case 'ArrowUp':
@@ -212,11 +219,15 @@ function setupEventListeners() {
             case 'M':
                 e.preventDefault();
                 video.muted = !video.muted;
-                btnMute.innerText = video.muted ? '🔇' : '🔊';
+                { const ic = document.getElementById('icon-mute'); if(ic) ic.innerHTML = video.muted ? '<path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.796 8.796 0 0 0 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06A8.99 8.99 0 0 0 17.73 19 1 1 0 0 0 19 17.73L4.27 3zM12 4 9.91 6.09 12 8.18V4z"/>' : '<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>'; }
                 break;
         }
     });
 
+    // Use a proper module-level variable for the skip timer — storing timers
+    // on DOM nodes (.ind._timer) is unreliable and survives closePlayer(),
+    // causing throws on detached elements that corrupt the renderer state.
+    let _skipTimer = null;
     function showSkipIndicator(text) {
         let ind = document.getElementById('skip-indicator');
         if (!ind) {
@@ -227,16 +238,50 @@ function setupEventListeners() {
         }
         ind.innerText = text;
         ind.classList.add('visible');
-        clearTimeout(ind._timer);
-        ind._timer = setTimeout(() => ind.classList.remove('visible'), 800);
+        clearTimeout(_skipTimer);
+        _skipTimer = setTimeout(() => {
+            const el = document.getElementById('skip-indicator');
+            if (el) el.classList.remove('visible');
+            _skipTimer = null;
+        }, 800);
     }
+    // Expose so closePlayer() can clear it
+    playerOverlay._clearSkipTimer = () => {
+        clearTimeout(_skipTimer);
+        _skipTimer = null;
+        const el = document.getElementById('skip-indicator');
+        if (el) el.classList.remove('visible');
+    };
+
+    // Debounce skip buttons — rapid clicks stack decoder seek operations and
+    // cause the renderer to back up. Settle on final position after 200ms.
+    let _seekDebounce = null;
+    let _pendingSeekTime = null;
+    function debouncedSeek(getTime) {
+        _pendingSeekTime = getTime();
+        clearTimeout(_seekDebounce);
+        _seekDebounce = setTimeout(() => {
+            if (_pendingSeekTime !== null) {
+                video.currentTime = _pendingSeekTime;
+                _pendingSeekTime = null;
+            }
+            _seekDebounce = null;
+        }, 200);
+    }
+    playerOverlay._clearSeekDebounce = () => {
+        clearTimeout(_seekDebounce);
+        _seekDebounce = null;
+        _pendingSeekTime = null;
+    };
 
     document.getElementById('btn-backward').onclick = () => {
-        video.currentTime = Math.max(0, video.currentTime - 10);
+        const t = Math.max(0, (video.currentTime || 0) - 10);
+        debouncedSeek(() => t);
         showSkipIndicator('-10s');
     };
     document.getElementById('btn-forward').onclick = () => {
-        video.currentTime = Math.min(video.duration || 0, video.currentTime + 10);
+        const t = Math.min(video.duration || 0, (video.currentTime || 0) + 10);
+        debouncedSeek(() => t);
         showSkipIndicator('+10s');
     };
 
@@ -250,7 +295,7 @@ function setupEventListeners() {
 
     btnMute.onclick = () => {
         video.muted = !video.muted;
-        btnMute.innerText = video.muted ? '🔇' : '🔊';
+        { const ic = document.getElementById('icon-mute'); if(ic) ic.innerHTML = video.muted ? '<path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.796 8.796 0 0 0 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06A8.99 8.99 0 0 0 17.73 19 1 1 0 0 0 19 17.73L4.27 3zM12 4 9.91 6.09 12 8.18V4z"/>' : '<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>'; }
     };
     volSlider.oninput = e => { video.volume = e.target.value; };
 
@@ -288,8 +333,8 @@ function setupEventListeners() {
     const musicVolume       = document.getElementById('music-volume');
 
     musicBtnPlay.onclick = () => audioElement.paused ? audioElement.play() : audioElement.pause();
-    audioElement.onplay  = () => musicBtnPlay.innerText = '⏸';
-    audioElement.onpause = () => musicBtnPlay.innerText = '▶';
+    audioElement.onplay  = () => { const ic = document.getElementById('icon-music-playpause'); if(ic) ic.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>'; };
+    audioElement.onpause = () => { const ic = document.getElementById('icon-music-playpause'); if(ic) ic.innerHTML = '<path d="M8 5v14l11-7z"/>'; };
 
     musicBtnPrev.onclick = () => {
         const prevIdx = state.currentTrackIndex - 1;
@@ -306,14 +351,18 @@ function setupEventListeners() {
         }
     };
 
+    // Throttle the IPC pipTime call — sending an IPC message 4x/sec over a
+    // long session floods the main process queue and contributes to freezing.
+    let _pipTimeThrottle = null;
     audioElement.ontimeupdate = () => {
         if (!audioElement.duration) return;
         const pct = (audioElement.currentTime / audioElement.duration) * 100;
         musicProgressFill.style.width = pct + '%';
         musicCurrent.innerText  = fmtTime(audioElement.currentTime);
         musicDuration.innerText = fmtTime(audioElement.duration);
-        
-        if (window.electronAPI && window.electronAPI.pipTime) {
+
+        if (window.electronAPI && window.electronAPI.pipTime && !_pipTimeThrottle) {
+            _pipTimeThrottle = setTimeout(() => { _pipTimeThrottle = null; }, 1000);
             window.electronAPI.pipTime({
                 current:  audioElement.currentTime,
                 duration: audioElement.duration,
@@ -475,6 +524,7 @@ function playMedia(item, fromPlaylist = false) {
         };
 
         videoElement.onended = () => {
+            flushResumeTime();
             saveResumeTime(item.path, 0);
             render();
         };
@@ -518,11 +568,11 @@ function playMedia(item, fromPlaylist = false) {
         };
 
         audioElement.onplay  = () => {
-            document.getElementById('music-btn-play').innerText = '⏸';
+            const _ic1 = document.getElementById('icon-music-playpause'); if(_ic1) _ic1.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
             window.electronAPI.pipState(true);
         };
         audioElement.onpause = () => {
-            document.getElementById('music-btn-play').innerText = '▶';
+            const _ic2 = document.getElementById('icon-music-playpause'); if(_ic2) _ic2.innerHTML = '<path d="M8 5v14l11-7z"/>';
             window.electronAPI.pipState(false);
         };
         audioElement.onended = () => {
@@ -542,11 +592,45 @@ function playMedia(item, fromPlaylist = false) {
 }
 
 // ===================== POSITION TRACKING =====================
+// Throttle state for saveResumeTime — localStorage writes are synchronous
+// and block the renderer thread. We batch them to once every 5 seconds.
+const _resumeWriteCache = {};
+let   _resumeWriteTimer = null;
+
+let _resumeSaveEnabled = true; // set false during teardown to block new writes
+
 function saveResumeTime(filePath, time) {
+    // Guard: don't accept new writes during player teardown
+    if (!_resumeSaveEnabled) return;
+
+    // Always update the in-memory cache immediately (cheap)
+    _resumeWriteCache[filePath] = Math.floor(time);
+
+    // Flush to localStorage at most once every 5 seconds
+    if (_resumeWriteTimer) return;
+    _resumeWriteTimer = setTimeout(() => {
+        _resumeWriteTimer = null;
+        if (!_resumeSaveEnabled) return; // double-check at fire time
+        try {
+            const key  = 'novaplus_resume';
+            const data = JSON.parse(localStorage.getItem(key) || '{}');
+            Object.assign(data, _resumeWriteCache);
+            localStorage.setItem(key, JSON.stringify(data));
+        } catch(e) {}
+    }, 5000);
+}
+
+function flushResumeTime() {
+    // Call this on close/end to force-write any pending cached time immediately
+    if (_resumeWriteTimer) {
+        clearTimeout(_resumeWriteTimer);
+        _resumeWriteTimer = null;
+    }
+    if (Object.keys(_resumeWriteCache).length === 0) return;
     try {
-        const key = 'novaplus_resume';
+        const key  = 'novaplus_resume';
         const data = JSON.parse(localStorage.getItem(key) || '{}');
-        data[filePath] = Math.floor(time);
+        Object.assign(data, _resumeWriteCache);
         localStorage.setItem(key, JSON.stringify(data));
     } catch(e) {}
 }
@@ -559,6 +643,14 @@ function getResumeTime(filePath) {
 }
 
 function closePlayer() {
+    // Step 0: Block any new saveResumeTime calls immediately — ontimeupdate
+    // can still fire during pipeline teardown (load() below), and we don't
+    // want it restarting the write timer after we've flushed and cleared it.
+    _resumeSaveEnabled = false;
+
+    // Step 0b: Flush whatever's pending to localStorage, then clear the timer.
+    flushResumeTime();
+
     // Step 1: Null out ALL handlers BEFORE touching src/load so none of them
     // fire during the pipeline teardown sequence below.
     videoElement.onloadedmetadata = null;
@@ -569,21 +661,30 @@ function closePlayer() {
     videoElement.onerror          = null;
     state.currentVideoItem        = null;
 
-    // Step 2: Properly abort the Electron/Chromium media pipeline.
-    // Setting src='' alone does NOT abort buffering — the decoder keeps running
-    // in the background and blocks the renderer thread, causing the freeze.
-    // The correct sequence is: pause → removeAttribute → load().
+    // Step 2: Abort the media pipeline without triggering a GPU stall.
+    // load() on hardware-accelerated video causes the GPU process to block
+    // input events on Windows. Instead we replace the src with a tiny
+    // blank video data URI which forces the decoder to switch contexts
+    // gracefully without stalling the GPU compositor.
     videoElement.pause();
-    videoElement.removeAttribute('src');
-    videoElement.load(); // forces the pipeline to fully abort and reset
+    videoElement.src = 'data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAAAhtZGF0AAAA';
+    setTimeout(() => {
+        videoElement.removeAttribute('src');
+        try { videoElement.load(); } catch(e) {}
+    }, 100);
 
     // Step 3: Hide the overlay and restore cursor/controls state.
     playerOverlay.classList.add('hidden');
-    if (playerOverlay._clearHideTimer) playerOverlay._clearHideTimer();
+    if (playerOverlay._clearHideTimer)    playerOverlay._clearHideTimer();
+    if (playerOverlay._clearSkipTimer)    playerOverlay._clearSkipTimer();
+    if (playerOverlay._clearSeekDebounce) playerOverlay._clearSeekDebounce();
     playerOverlay.style.cursor = '';
     document.getElementById('video-controls').style.opacity = '1';
     document.getElementById('video-progress-fill').style.width = '0%';
     document.getElementById('video-time').innerText = '0:00 / 0:00';
+
+    // Re-enable resume saves so the next video can track its position
+    _resumeSaveEnabled = true;
 
     render();
 }
@@ -900,7 +1001,7 @@ function setupSettingsListeners() {
             feedback_type: 'NovaHub Tracker',
             feedback_text: text,
             attachments: 'None',
-            app_version: '2.1.2',
+            app_version: '2.1.4',
             sent_at: new Date().toLocaleString(),
             user_email: document.getElementById('feedback-email').value.trim() || 'Not provided',
         };

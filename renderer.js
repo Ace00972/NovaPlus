@@ -132,20 +132,24 @@ function setupEventListeners() {
                 case 'playpause':
                     activePlayer.paused ? activePlayer.play().catch(e => console.error(e)) : activePlayer.pause();
                     break;
-                case 'prev':
+                case 'prev': {
                     const prevIdx = state.currentTrackIndex - 1;
-                    if (prevIdx >= 0) { 
+                    const prevItem = state.currentPlaylist[prevIdx];
+                    if (prevIdx >= 0 && prevItem) { 
                         state.currentTrackIndex = prevIdx; 
-                        playMedia(state.currentPlaylist[prevIdx]); 
+                        playMedia(prevItem); 
                     }
                     break;
-                case 'next':
+                }
+                case 'next': {
                     const nextIdx = state.currentTrackIndex + 1;
-                    if (nextIdx < state.currentPlaylist.length) { 
+                    const nextItem = state.currentPlaylist[nextIdx];
+                    if (nextItem) { 
                         state.currentTrackIndex = nextIdx; 
-                        playMedia(state.currentPlaylist[nextIdx]); 
+                        playMedia(nextItem); 
                     }
                     break;
+                }
             }
         } else if (cmd && typeof cmd === 'object') {
             switch (cmd.action) {
@@ -179,8 +183,8 @@ function setupEventListeners() {
     const btnFs        = document.getElementById('btn-fullscreen');
 
     btnPlayPause.onclick = () => video.paused ? video.play() : video.pause();
-    video.onplay  = () => { const ic = document.getElementById('icon-playpause'); if(ic) ic.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>'; };
-    video.onpause = () => { const ic = document.getElementById('icon-playpause'); if(ic) ic.innerHTML = '<path d="M8 5v14l11-7z"/>'; };
+    video.addEventListener('play',  () => { const btn = document.getElementById('btn-play-pause'); if (btn) btn.textContent = '⏸'; });
+    video.addEventListener('pause', () => { const btn = document.getElementById('btn-play-pause'); if (btn) btn.textContent = '▶'; });
 
     document.addEventListener('keydown', e => {
         if (playerOverlay.classList.contains('hidden')) return;
@@ -219,7 +223,7 @@ function setupEventListeners() {
             case 'M':
                 e.preventDefault();
                 video.muted = !video.muted;
-                { const ic = document.getElementById('icon-mute'); if(ic) ic.innerHTML = video.muted ? '<path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.796 8.796 0 0 0 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06A8.99 8.99 0 0 0 17.73 19 1 1 0 0 0 19 17.73L4.27 3zM12 4 9.91 6.09 12 8.18V4z"/>' : '<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>'; }
+                { const btn = document.getElementById('btn-mute'); if(btn) btn.textContent = video.muted ? '🔇' : '🔊'; }
                 break;
         }
     });
@@ -295,7 +299,7 @@ function setupEventListeners() {
 
     btnMute.onclick = () => {
         video.muted = !video.muted;
-        { const ic = document.getElementById('icon-mute'); if(ic) ic.innerHTML = video.muted ? '<path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.796 8.796 0 0 0 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06A8.99 8.99 0 0 0 17.73 19 1 1 0 0 0 19 17.73L4.27 3zM12 4 9.91 6.09 12 8.18V4z"/>' : '<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>'; }
+        btnMute.textContent = video.muted ? '🔇' : '🔊';
     };
     volSlider.oninput = e => { video.volume = e.target.value; };
 
@@ -333,8 +337,8 @@ function setupEventListeners() {
     const musicVolume       = document.getElementById('music-volume');
 
     musicBtnPlay.onclick = () => audioElement.paused ? audioElement.play() : audioElement.pause();
-    audioElement.onplay  = () => { const ic = document.getElementById('icon-music-playpause'); if(ic) ic.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>'; };
-    audioElement.onpause = () => { const ic = document.getElementById('icon-music-playpause'); if(ic) ic.innerHTML = '<path d="M8 5v14l11-7z"/>'; };
+    audioElement.addEventListener('play',  () => { const btn = document.getElementById('music-btn-play'); if (btn) btn.textContent = '⏸'; });
+    audioElement.addEventListener('pause', () => { const btn = document.getElementById('music-btn-play'); if (btn) btn.textContent = '▶'; });
 
     musicBtnPrev.onclick = () => {
         const prevIdx = state.currentTrackIndex - 1;
@@ -568,11 +572,11 @@ function playMedia(item, fromPlaylist = false) {
         };
 
         audioElement.onplay  = () => {
-            const _ic1 = document.getElementById('icon-music-playpause'); if(_ic1) _ic1.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>';
+            const btn = document.getElementById('music-btn-play'); if (btn) btn.textContent = '⏸';
             window.electronAPI.pipState(true);
         };
         audioElement.onpause = () => {
-            const _ic2 = document.getElementById('icon-music-playpause'); if(_ic2) _ic2.innerHTML = '<path d="M8 5v14l11-7z"/>';
+            const btn = document.getElementById('music-btn-play'); if (btn) btn.textContent = '▶';
             window.electronAPI.pipState(false);
         };
         audioElement.onended = () => {
@@ -643,6 +647,18 @@ function getResumeTime(filePath) {
 }
 
 function closePlayer() {
+    // If fullscreen is active, exit it first and defer the rest of teardown
+    // until the browser confirms exit via fullscreenchange. Hiding the overlay
+    // while fullscreen is still active forces an async GPU compositor reset
+    // that blocks input events and causes a freeze on Electron/Windows.
+    if (document.fullscreenElement) {
+        document.exitFullscreen().finally(() => _doClosePlayer());
+        return;
+    }
+    _doClosePlayer();
+}
+
+function _doClosePlayer() {
     // Step 0: Block any new saveResumeTime calls immediately — ontimeupdate
     // can still fire during pipeline teardown (load() below), and we don't
     // want it restarting the write timer after we've flushed and cleared it.

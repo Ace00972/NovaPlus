@@ -41,11 +41,7 @@ function createWindow() {
     mainWindow.loadFile('index.html');
     mainWindow.setMenuBarVisibility(false);
 
-    // ── DEBUG: Opens DevTools for the renderer process automatically.
-    // Remove once the freeze is diagnosed.
-    mainWindow.webContents.openDevTools();
-
-    mainWindow.webContents.session.webRequest.onBeforeSendHeaders((details, callback) => {
+mainWindow.webContents.session.webRequest.onBeforeSendHeaders((details, callback) => {
         const headers = { ...details.requestHeaders };
         if (details.url.includes('omdbapi.com')) {
             delete headers['Origin'];

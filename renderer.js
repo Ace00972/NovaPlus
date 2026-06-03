@@ -178,15 +178,17 @@ function setupEventListeners() {
     const video        = videoElement;
     const progressWrap = document.getElementById('video-progress');
     const progressFill = document.getElementById('video-progress-fill');
-    const timeLabel    = document.getElementById('video-time');
+    const timeCurrent  = document.getElementById('video-time-current');
+    const timeDuration = document.getElementById('video-time-duration');
+    const titleLabel   = document.getElementById('video-title-label');
     const btnPlayPause = document.getElementById('btn-play-pause');
     const btnMute      = document.getElementById('btn-mute');
     const volSlider    = document.getElementById('volume-slider');
     const btnFs        = document.getElementById('btn-fullscreen');
 
     btnPlayPause.onclick = () => video.paused ? video.play() : video.pause();
-    video.addEventListener('play',  () => { const btn = document.getElementById('btn-play-pause'); if (btn) btn.textContent = '⏸'; });
-    video.addEventListener('pause', () => { const btn = document.getElementById('btn-play-pause'); if (btn) btn.textContent = '▶'; });
+    video.addEventListener('play',  () => { const ic = document.getElementById('icon-playpause'); if (ic) ic.innerHTML = '<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>'; });
+    video.addEventListener('pause', () => { const ic = document.getElementById('icon-playpause'); if (ic) ic.innerHTML = '<path d="M8 5v14l11-7z"/>'; });
 
     document.addEventListener('keydown', e => {
         if (playerOverlay.classList.contains('hidden')) return;
@@ -225,7 +227,7 @@ function setupEventListeners() {
             case 'M':
                 e.preventDefault();
                 video.muted = !video.muted;
-                { const btn = document.getElementById('btn-mute'); if(btn) btn.textContent = video.muted ? '🔇' : '🔊'; }
+                { const ic = document.getElementById('icon-mute'); if(ic) ic.innerHTML = video.muted ? '<path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.796 8.796 0 0 0 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06A8.99 8.99 0 0 0 17.73 19 1 1 0 0 0 19 17.73L4.27 3zM12 4 9.91 6.09 12 8.18V4z"/>' : '<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>'; }
                 break;
         }
     });
@@ -301,13 +303,33 @@ function setupEventListeners() {
 
     btnMute.onclick = () => {
         video.muted = !video.muted;
-        btnMute.textContent = video.muted ? '🔇' : '🔊';
+        const ic = document.getElementById('icon-mute');
+        if (ic) ic.innerHTML = video.muted
+            ? '<path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.796 8.796 0 0 0 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3 3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06A8.99 8.99 0 0 0 17.73 19 1 1 0 0 0 19 17.73L4.27 3zM12 4 9.91 6.09 12 8.18V4z"/>'
+            : '<path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>';
     };
     volSlider.oninput = e => { video.volume = e.target.value; };
 
     btnFs.onclick = () => {
         if (document.fullscreenElement) document.exitFullscreen();
         else playerOverlay.requestFullscreen();
+    };
+
+    // New WMP-style buttons — shuffle/repeat are cosmetic for video,
+    // prev/next navigate the video playlist if one exists
+    const btnShuffle  = document.getElementById('btn-shuffle');
+    const btnRepeat   = document.getElementById('btn-repeat');
+    const btnPrevTrack = document.getElementById('btn-prev-track');
+    const btnNextTrack = document.getElementById('btn-next-track');
+    if (btnShuffle)   btnShuffle.onclick  = () => btnShuffle.classList.toggle('ctrl-btn-active');
+    if (btnRepeat)    btnRepeat.onclick   = () => { video.loop = !video.loop; btnRepeat.classList.toggle('ctrl-btn-active'); };
+    if (btnPrevTrack) btnPrevTrack.onclick = () => {
+        const prev = state.currentPlaylist[state.currentTrackIndex - 1];
+        if (prev) { state.currentTrackIndex--; playMedia(prev); }
+    };
+    if (btnNextTrack) btnNextTrack.onclick = () => {
+        const next = state.currentPlaylist[state.currentTrackIndex + 1];
+        if (next) { state.currentTrackIndex++; playMedia(next); }
     };
 
     // FIX: Declare hideTimer at this scope so closePlayer() can clear it
@@ -509,14 +531,18 @@ function playMedia(item, fromPlaylist = false) {
         // Install ontimeupdate fresh each time playMedia runs for video.
         // closePlayer() nulls it out as part of pipeline teardown, so we
         // must re-register it here to ensure it's always present during playback.
-        const progressFill = document.getElementById('video-progress-fill');
-        const timeLabel    = document.getElementById('video-time');
+        const progressFill  = document.getElementById('video-progress-fill');
+        const timeCurrent   = document.getElementById('video-time-current');
+        const timeDuration  = document.getElementById('video-time-duration');
+        const titleLabelEl  = document.getElementById('video-title-label');
+        if (titleLabelEl) titleLabelEl.textContent = item.name || '';
         videoElement.ontimeupdate = () => {
             if (!videoElement.duration || !state.currentVideoItem) return;
             saveResumeTime(state.currentVideoItem.path, videoElement.currentTime);
             const pct = (videoElement.currentTime / videoElement.duration) * 100;
             progressFill.style.width = pct + '%';
-            timeLabel.innerText = `${fmtTime(videoElement.currentTime)} / ${fmtTime(videoElement.duration)}`;
+            if (timeCurrent)  timeCurrent.textContent  = fmtTime(videoElement.currentTime);
+            if (timeDuration) timeDuration.textContent = fmtTime(videoElement.duration);
         };
 
         videoElement.src = mediaUrl;
@@ -699,7 +725,9 @@ function _doClosePlayer() {
     playerOverlay.style.cursor = '';
     document.getElementById('video-controls').style.opacity = '1';
     document.getElementById('video-progress-fill').style.width = '0%';
-    document.getElementById('video-time').innerText = '0:00 / 0:00';
+    const tc = document.getElementById('video-time-current');   if (tc) tc.textContent = '0:00';
+    const td = document.getElementById('video-time-duration');  if (td) td.textContent = '0:00';
+    const tl = document.getElementById('video-title-label');    if (tl) tl.textContent = '';
 
     // Re-enable resume saves so the next video can track its position
     _resumeSaveEnabled = true;

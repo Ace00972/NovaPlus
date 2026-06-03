@@ -841,6 +841,71 @@ body.bg-forest   { background-image: radial-gradient(circle at 50% 100%, rgba(26
 body.bg-ember    { background-image: radial-gradient(circle at 50% 80%, rgba(124,45,18,0.4), transparent 60%); }
 body.bg-arctic   { background-image: radial-gradient(circle at 50% 0%, rgba(30,58,95,0.4), transparent 60%); }
 
+/* Custom solid colour background */
+body.bg-solid-color { background-image: none !important; }
+
+/* Custom image background */
+body.bg-custom-image::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background-image: var(--custom-bg-image);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    opacity: 0.18;
+    pointer-events: none;
+}
+
+/* Solid colour row */
+.solid-bg-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+.bg-color-input {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    border: 1px solid var(--glass-border);
+    background: none;
+    cursor: pointer;
+    padding: 2px;
+}
+.btn-sm {
+    padding: 0.4rem 1rem;
+    font-size: 0.85rem;
+    border-radius: 8px;
+}
+
+/* Custom image row */
+.custom-image-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+.bg-image-name {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
+}
+.btn-ghost {
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+.btn-ghost:hover { border-color: #f87171; color: #f87171; }
+
 /* Utility */
 .hidden { display: none !important; }
 

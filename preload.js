@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     maximize:     () => ipcRenderer.send('window-maximize'),
     close:        () => ipcRenderer.send('window-close'),
     selectFolder: () => ipcRenderer.invoke('dialog:openDirectory'),
+    selectFile:   (filters) => ipcRenderer.invoke('dialog:openFile', filters),
     scanMedia:    (p) => ipcRenderer.invoke('media:scan', p),
     toMediaUrl:   (p) => `nova-media://${p}`,
 

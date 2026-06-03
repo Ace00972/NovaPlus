@@ -118,6 +118,14 @@ ipcMain.handle('dialog:openDirectory', async () => {
     return result.canceled ? null : result.filePaths[0];
 });
 
+ipcMain.handle('dialog:openFile', async (event, filters) => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openFile'],
+        filters: filters || [{ name: 'Images', extensions: ['jpg','jpeg','png','webp','gif'] }]
+    });
+    return result.canceled ? null : result.filePaths[0];
+});
+
 ipcMain.handle('media:scan', async (event, dirPath) => {
     return await scanDirectory(dirPath);
 });

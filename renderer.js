@@ -8,6 +8,8 @@ const state = {
     omdbKey: '',
     accentColor: '#63b3ff',
     bgStyle: 'default',
+    bgColor: '#0a0d14',
+    bgImagePath: '',
     
     // Core Media Playlist Control States
     currentPlaylist: [],
@@ -745,6 +747,8 @@ async function loadSettings() {
             state.omdbKey      = p.omdbKey      || '';
             state.accentColor  = p.accentColor  || '#63b3ff';
             state.bgStyle      = p.bgStyle      || 'default';
+            state.bgColor      = p.bgColor      || '#0a0d14';
+            state.bgImagePath  = p.bgImagePath  || '';
         }
     } catch(e) {}
 
@@ -758,6 +762,16 @@ async function loadSettings() {
     applyAccent(state.accentColor);
     applyBg(state.bgStyle);
 
+    // Restore custom bg UI state
+    const colorPicker = document.getElementById('bg-color-picker');
+    if (colorPicker && state.bgColor) colorPicker.value = state.bgColor;
+    if (state.bgImagePath) {
+        const nameEl = document.getElementById('bg-image-name');
+        const clearBtn = document.getElementById('btn-clear-bg-image');
+        if (nameEl) nameEl.textContent = state.bgImagePath.split(/[\\/]/).pop();
+        if (clearBtn) clearBtn.style.display = '';
+    }
+
     const omdbInput = document.getElementById('omdb-api-key');
     if (omdbInput && state.omdbKey) omdbInput.value = state.omdbKey;
 }
@@ -769,6 +783,8 @@ function saveSettings() {
         omdbKey:      state.omdbKey,
         accentColor:  state.accentColor,
         bgStyle:      state.bgStyle,
+        bgColor:      state.bgColor      || '#0a0d14',
+        bgImagePath:  state.bgImagePath  || '',
     }));
 }
 
@@ -782,7 +798,23 @@ function applyAccent(color) {
 
 function applyBg(style) {
     document.body.className = document.body.className.replace(/\bbg-\S+/g, '').trim();
-    if (style !== 'default') document.body.classList.add('bg-' + style);
+    if (style === 'solid-color') {
+        document.body.classList.add('bg-solid-color');
+        document.body.style.backgroundColor = state.bgColor || '#0a0d14';
+    } else if (style === 'custom-image') {
+        document.body.classList.add('bg-custom-image');
+        document.body.style.backgroundColor = '';
+        // Apply image via the ::before pseudo-element using a CSS variable
+        if (state.bgImagePath) {
+            document.documentElement.style.setProperty(
+                '--custom-bg-image',
+                `url("nova-media://${state.bgImagePath.replace(/\\/g, '/')}")`
+            );
+        }
+    } else {
+        document.body.style.backgroundColor = '';
+        if (style !== 'default') document.body.classList.add('bg-' + style);
+    }
     state.bgStyle = style;
     document.querySelectorAll('.wallpaper-option').forEach(o =>
         o.classList.toggle('active', o.dataset.bg === style));
@@ -943,6 +975,39 @@ function setupSettingsListeners() {
     document.querySelectorAll('.wallpaper-option').forEach(o => {
         o.onclick = () => { applyBg(o.dataset.bg); saveSettings(); };
     });
+
+    // Solid colour background
+    const bgColorPicker = document.getElementById('bg-color-picker');
+    document.getElementById('btn-apply-solid-bg').onclick = () => {
+        state.bgColor = bgColorPicker.value;
+        applyBg('solid-color');
+        saveSettings();
+    };
+    document.getElementById('btn-clear-solid-bg').onclick = () => {
+        applyBg('default');
+        saveSettings();
+    };
+
+    // Custom image background
+    document.getElementById('btn-pick-bg-image').onclick = async () => {
+        const filePath = await window.electronAPI.selectFile([
+            { name: 'Images', extensions: ['jpg','jpeg','png','webp','gif'] }
+        ]);
+        if (!filePath) return;
+        state.bgImagePath = filePath;
+        applyBg('custom-image');
+        saveSettings();
+        const name = filePath.split(/[\\/]/).pop();
+        document.getElementById('bg-image-name').textContent = name;
+        document.getElementById('btn-clear-bg-image').style.display = '';
+    };
+    document.getElementById('btn-clear-bg-image').onclick = () => {
+        state.bgImagePath = '';
+        applyBg('default');
+        saveSettings();
+        document.getElementById('bg-image-name').textContent = 'No image selected';
+        document.getElementById('btn-clear-bg-image').style.display = 'none';
+    };
 
     const EMAILJS_SERVICE_ID  = 'service_hc8ryvu';
     const EMAILJS_TEMPLATE_ID = 'template_yd4x8x6';

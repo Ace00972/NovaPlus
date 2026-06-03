@@ -47,7 +47,7 @@
             </nav>
             
             <div class="sidebar-footer">
-                <div class="version-badge">NovaPlus <span>v2.1.5</span></div>
+                <div class="version-badge">NovaPlus <span>v2.1.6</span></div>
             </div>
         </aside>
 
@@ -179,14 +179,20 @@
                         </div>
                     </div>
 
-                    <!-- Custom Wallpaper — Coming Soon -->
-                    <div class="coming-soon-block">
-                        <div class="coming-soon-icon">🖼️</div>
-                        <div class="coming-soon-text">
-                            <span class="coming-soon-label">Custom Wallpaper</span>
-                            <span class="coming-soon-badge">Coming Soon</span>
-                        </div>
-                        <p class="coming-soon-desc">Upload your own image as the app background.</p>
+                    <!-- Solid Colour Background -->
+                    <label class="settings-label" style="margin-top:2rem;">Solid Colour</label>
+                    <div class="solid-bg-row">
+                        <input type="color" id="bg-color-picker" value="#0a0d14" class="bg-color-input" title="Pick a background colour">
+                        <button class="btn-accent btn-sm" id="btn-apply-solid-bg">Apply Colour</button>
+                        <button class="wallpaper-option" data-bg="default" id="btn-clear-solid-bg" style="padding:0.4rem 0.9rem;height:auto;">Reset</button>
+                    </div>
+
+                    <!-- Custom Image Background -->
+                    <label class="settings-label" style="margin-top:2rem;">Custom Image</label>
+                    <div class="custom-image-row">
+                        <button class="btn-accent btn-sm" id="btn-pick-bg-image">📁 Choose Image</button>
+                        <span id="bg-image-name" class="bg-image-name">No image selected</span>
+                        <button class="btn-ghost btn-sm" id="btn-clear-bg-image" style="display:none">✕ Remove</button>
                     </div>
                 </section>
 

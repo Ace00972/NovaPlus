@@ -482,7 +482,7 @@ function render() {
         return;
     }
 
-    state.currentPlaylist = items.filter(i => i.type === 'audio');
+    // currentPlaylist is now set on card click based on item type — do not overwrite here
 
     items.forEach((item, idx) => {
         const card = document.createElement('div');
@@ -511,7 +511,10 @@ function render() {
             </div>`;
 
         card.onclick = () => {
-            state.currentTrackIndex = state.currentPlaylist.indexOf(item);
+            // Build playlist from same type as clicked item so prev/next works for both video and audio
+            const sameType = items.filter(i => i.type === item.type);
+            state.currentPlaylist = sameType;
+            state.currentTrackIndex = sameType.indexOf(item);
             playMedia(item);
         };
         mediaGrid.appendChild(card);

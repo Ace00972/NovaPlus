@@ -1,13 +1,14 @@
 {
   "name": "novaplus",
-  "version": "2.1.8",
+  "version": "2.1.9",
   "description": "A premium glassmorphic local media player built with Electron",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --inspect",
     "build": "electron-builder --win appx",
-    "build:installer": "electron-builder --win nsis"
+    "build:installer": "electron-builder --win nsis",
+    "rebuild": "electron-rebuild -f -w @nodert-win10-rs4/windows.services.store"
   },
   "keywords": [
     "media-player",
@@ -22,11 +23,13 @@
   },
   "license": "MIT",
   "dependencies": {
-    "music-metadata": "^7.13.4"
+    "music-metadata": "^7.13.4",
+    "@nodert-win10-rs4/windows.services.store": "^0.2.0"
   },
   "devDependencies": {
     "electron": "^28.2.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "electron-rebuild": "^3.2.9"
   },
   "build": {
     "appId": "com.acegen.novaplus",

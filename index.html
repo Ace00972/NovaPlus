@@ -22,6 +22,8 @@
         </div>
     </div>
 
+    <canvas id="fx-canvas"></canvas>
+
     <div class="app-container">
         <!-- Sidebar -->
         <aside class="sidebar">
@@ -177,6 +179,41 @@
                             <div class="wallpaper-preview arctic-bg"></div>
                             <span>Arctic</span>
                         </div>
+                    </div>
+
+                    <label class="settings-label" style="margin-top:2rem;">Effects</label>
+                    <div class="effect-bundle-banner">
+                        <div>
+                            <div class="effect-bundle-title">Four Seasons Pack</div>
+                            <div class="effect-bundle-sub">Unlock Winter, Spring, Summer &amp; Autumn together</div>
+                        </div>
+                        <button class="btn-accent btn-sm" id="btn-buy-seasons-bundle">Unlock all — $2.99</button>
+                    </div>
+                    <div class="effect-grid">
+                        <div class="effect-option active" data-effect="none">
+                            <div class="effect-preview fx-none-preview"></div>
+                            <span>None</span>
+                        </div>
+                        <div class="effect-option" data-effect="winter" data-locked="true">
+                            <div class="effect-preview fx-winter-preview"></div>
+                            <span>Winter</span>
+                        </div>
+                        <div class="effect-option" data-effect="spring" data-locked="true">
+                            <div class="effect-preview fx-spring-preview"></div>
+                            <span>Spring</span>
+                        </div>
+                        <div class="effect-option" data-effect="summer" data-locked="true">
+                            <div class="effect-preview fx-summer-preview"></div>
+                            <span>Summer</span>
+                        </div>
+                        <div class="effect-option" data-effect="autumn" data-locked="true">
+                            <div class="effect-preview fx-autumn-preview"></div>
+                            <span>Autumn</span>
+                        </div>
+                    </div>
+                    <div class="effect-intensity-row">
+                        <label for="effect-intensity">Intensity</label>
+                        <input type="range" id="effect-intensity" min="0" max="2" step="1" value="1" style="flex:1;accent-color:var(--accent)">
                     </div>
 
                     <!-- Solid Colour Background -->
@@ -349,6 +386,7 @@
         </div>
     </div>
 
+    <script src="theme-fx.js"></script>
     <script src="renderer.js"></script>
 </body>
 </html>

@@ -27,6 +27,107 @@ body {
                       radial-gradient(circle at 100% 100%, rgba(163, 133, 255, 0.05) 0%, transparent 50%);
 }
 
+/* Ambient FX overlay (Theme Packs: snow / autumn / flames) */
+#fx-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 9998;
+    pointer-events: none;
+}
+
+.effect-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.effect-option {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem;
+    border-radius: 10px;
+    border: 1px solid var(--glass-border);
+    background: var(--glass);
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.effect-option:hover {
+    background: var(--glass-heavy);
+}
+
+.effect-option.active {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.effect-option.locked {
+    opacity: 0.55;
+}
+
+.effect-preview {
+    width: 100%;
+    height: 44px;
+    border-radius: 8px;
+    background: #0b0d14;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+}
+
+.effect-preview.fx-winter-preview::after   { content: '❄'; color: #cfe8ff; }
+.effect-preview.fx-spring-preview::after   { content: '🌸'; }
+.effect-preview.fx-summer-preview::after   { content: '✨'; }
+.effect-preview.fx-autumn-preview::after   { content: '🍂'; }
+.effect-preview.fx-none-preview::after     { content: '—'; color: var(--text-muted); }
+
+.effect-option span {
+    font-size: 0.8rem;
+    color: var(--text-main);
+}
+
+.effect-bundle-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.9rem 1.1rem;
+    border-radius: 12px;
+    border: 1px solid var(--glass-border);
+    background: var(--glass);
+    margin-bottom: 1rem;
+}
+
+.effect-bundle-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.effect-bundle-sub {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 0.15rem;
+}
+
+.effect-intensity-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+}
+
+.effect-intensity-row label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
 /* Titlebar */
 .titlebar {
     height: var(--titlebar-height);

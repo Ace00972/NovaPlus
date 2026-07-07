@@ -9,6 +9,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     scanMedia:    (p) => ipcRenderer.invoke('media:scan', p),
     toMediaUrl:   (p) => `nova-media://${p}`,
 
+    // Microsoft Store IAP — Four Seasons Pack
+    checkSeasonsBundleOwned: () => ipcRenderer.invoke('iap:checkSeasonsBundle'),
+    purchaseSeasonsBundle:   () => ipcRenderer.invoke('iap:purchaseSeasonsBundle'),
+
     // Resolves a drag-and-dropped File object to its real filesystem path.
     // Required in Electron builds with contextIsolation: true where
     // file.path is no longer populated in the renderer process.

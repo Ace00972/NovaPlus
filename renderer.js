@@ -10,6 +10,11 @@ const state = {
     bgStyle: 'default',
     bgColor: '#0a0d14',
     bgImagePath: '',
+
+    // Theme FX (Snow / Autumn / Flames packs)
+    fxEffect: 'none',
+    fxIntensity: 'medium',
+    unlockedEffects: [], // e.g. ['winter', 'autumn'] once purchased via Store IAP
     
     // Core Media Playlist Control States
     currentPlaylist: [],
@@ -46,7 +51,11 @@ document.addEventListener('dragover',  e => e.preventDefault());
 document.addEventListener('drop',      e => e.preventDefault());
 
 document.addEventListener('DOMContentLoaded', async () => {
+    if (window.NovaFX) {
+        NovaFX.mount(document.getElementById('fx-canvas'));
+    }
     await loadSettings();
+    verifyOwnedEffectsFromStore();
     setupEventListeners();
     setupSettingsListeners();
     if (state.movieFolders.length || state.musicFolders.length) {
@@ -780,6 +789,9 @@ async function loadSettings() {
             state.bgStyle      = p.bgStyle      || 'default';
             state.bgColor      = p.bgColor      || '#0a0d14';
             state.bgImagePath  = p.bgImagePath  || '';
+            state.fxEffect        = p.fxEffect        || 'none';
+            state.fxIntensity      = p.fxIntensity      || 'medium';
+            state.unlockedEffects  = p.unlockedEffects  || [];
         }
     } catch(e) {}
 
@@ -805,6 +817,14 @@ async function loadSettings() {
 
     const omdbInput = document.getElementById('omdb-api-key');
     if (omdbInput && state.omdbKey) omdbInput.value = state.omdbKey;
+
+    renderEffectLockState();
+    applyEffect(state.fxEffect);
+    const intensitySlider = document.getElementById('effect-intensity');
+    if (intensitySlider) {
+        intensitySlider.value = FX_INTENSITY_STEPS.indexOf(state.fxIntensity) >= 0
+            ? FX_INTENSITY_STEPS.indexOf(state.fxIntensity) : 1;
+    }
 }
 
 function saveSettings() {
@@ -816,7 +836,98 @@ function saveSettings() {
         bgStyle:      state.bgStyle,
         bgColor:      state.bgColor      || '#0a0d14',
         bgImagePath:  state.bgImagePath  || '',
+        fxEffect:        state.fxEffect        || 'none',
+        fxIntensity:     state.fxIntensity     || 'medium',
+        unlockedEffects: state.unlockedEffects || [],
     }));
+}
+
+// Maps the 3-step intensity slider (0/1/2) to NovaFX's named levels
+const FX_INTENSITY_STEPS = ['low', 'medium', 'high'];
+
+function applyEffect(effect) {
+    // 'none' is always available; the rest are unlocked together via the bundle
+    const isUnlocked = effect === 'none' || state.unlockedEffects.includes(effect);
+    if (!isUnlocked) {
+        promptSeasonsBundlePurchase();
+        return;
+    }
+    state.fxEffect = effect;
+    if (window.NovaFX) {
+        NovaFX.setEffect(effect, { intensity: state.fxIntensity });
+    }
+    document.querySelectorAll('.effect-option').forEach(o =>
+        o.classList.toggle('active', o.dataset.effect === effect));
+    saveSettings();
+}
+
+function applyEffectIntensity(intensity) {
+    state.fxIntensity = intensity;
+    if (window.NovaFX) NovaFX.setIntensity(intensity);
+    saveSettings();
+}
+
+// Real Microsoft Store purchase flow for the "Four Seasons Pack" add-on.
+// Calls through preload -> main process -> Windows.Services.Store (see main.js).
+// Only functions when running as the installed .appx; in unpackaged dev
+// mode (npm start) this will report unavailable and just log, so local
+// testing never fails hard.
+async function promptSeasonsBundlePurchase() {
+    if (!window.electronAPI || typeof window.electronAPI.purchaseSeasonsBundle !== 'function') {
+        console.warn('[NovaFX] Store purchase API unavailable in this build (are you running the packaged .appx?).');
+        return;
+    }
+    const bundleBtn = document.getElementById('btn-buy-seasons-bundle');
+    if (bundleBtn) { bundleBtn.disabled = true; bundleBtn.textContent = 'Processing…'; }
+
+    let result;
+    try {
+        result = await window.electronAPI.purchaseSeasonsBundle();
+    } catch (e) {
+        console.error('[NovaFX] Purchase call failed:', e);
+        result = { success: false };
+    }
+
+    if (result && result.success) {
+        state.unlockedEffects = ['winter', 'spring', 'summer', 'autumn'];
+        saveSettings();
+        renderEffectLockState();
+    } else {
+        console.log('[NovaFX] Purchase not completed:', result);
+        if (bundleBtn) { bundleBtn.disabled = false; bundleBtn.textContent = 'Unlock all — $2.99'; }
+    }
+}
+
+// Re-checks ownership against the real Store license on startup, so a
+// user editing localStorage by hand can't fake an unlock — the Store's
+// answer always wins over whatever's cached locally.
+async function verifyOwnedEffectsFromStore() {
+    if (!window.electronAPI || typeof window.electronAPI.checkSeasonsBundleOwned !== 'function') return;
+    try {
+        const result = await window.electronAPI.checkSeasonsBundleOwned();
+        if (result && result.available) {
+            state.unlockedEffects = result.owned ? ['winter', 'spring', 'summer', 'autumn'] : [];
+            saveSettings();
+            renderEffectLockState();
+        }
+    } catch (e) {
+        console.error('[NovaFX] Store license check failed:', e);
+    }
+}
+
+function renderEffectLockState() {
+    document.querySelectorAll('.effect-option[data-effect]').forEach(o => {
+        const effect = o.dataset.effect;
+        const owned = effect === 'none' || state.unlockedEffects.includes(effect);
+        o.classList.toggle('locked', !owned);
+    });
+    const bundleBtn = document.getElementById('btn-buy-seasons-bundle');
+    if (bundleBtn) {
+        const allOwned = ['winter', 'spring', 'summer', 'autumn']
+            .every(e => state.unlockedEffects.includes(e));
+        bundleBtn.textContent = allOwned ? 'Owned' : 'Unlock all — $2.99';
+        bundleBtn.disabled = allOwned;
+    }
 }
 
 function applyAccent(color) {
@@ -1006,6 +1117,20 @@ function setupSettingsListeners() {
     document.querySelectorAll('.wallpaper-option').forEach(o => {
         o.onclick = () => { applyBg(o.dataset.bg); saveSettings(); };
     });
+
+    document.querySelectorAll('.effect-option[data-effect]').forEach(o => {
+        o.onclick = () => applyEffect(o.dataset.effect);
+    });
+    const bundleBtn = document.getElementById('btn-buy-seasons-bundle');
+    if (bundleBtn) {
+        bundleBtn.onclick = () => promptSeasonsBundlePurchase();
+    }
+    const intensitySlider = document.getElementById('effect-intensity');
+    if (intensitySlider) {
+        intensitySlider.oninput = () => {
+            applyEffectIntensity(FX_INTENSITY_STEPS[+intensitySlider.value]);
+        };
+    }
 
     // Solid colour background
     const bgColorPicker = document.getElementById('bg-color-picker');

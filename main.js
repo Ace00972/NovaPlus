@@ -2,6 +2,63 @@ const { app, BrowserWindow, ipcMain, dialog, protocol } = require('electron');
 const path = require('path');
 const { scanDirectory } = require('./src/scanner');
 
+// ── Microsoft Store IAP bridge (Four Seasons Pack) ──────────────────────
+// Windows.Services.Store is a WinRT API — Electron can't call it directly
+// from renderer JS, so we load it here in the main process via NodeRT
+// (a native Node addon that exposes WinRT namespaces) and relay results to
+// the renderer over IPC. This ONLY works when the app is running with a
+// package identity (i.e. installed as the .appx via the Microsoft Store
+// or sideloaded) — it will not work when running unpackaged with
+// `npm start`. Falls back gracefully to "unavailable" in that case.
+//
+// Install with:  npm install @nodert-win10-rs4/windows.services.store
+// Then rebuild native modules for Electron's ABI: npx electron-rebuild
+const FOUR_SEASONS_PRODUCT_ID = 'FourSeasonsPack'; // must match the Product ID set in Partner Center
+
+let StoreContext = null;
+try {
+    ({ StoreContext } = require('@nodert-win10-rs4/windows.services.store'));
+} catch (e) {
+    console.warn('[Store IAP] Windows.Services.Store bindings not available (expected when running unpackaged).');
+}
+
+function getStoreContext() {
+    if (!StoreContext) return null;
+    try { return StoreContext.getDefault(); }
+    catch (e) { console.error('[Store IAP] Failed to get StoreContext:', e); return null; }
+}
+
+ipcMain.handle('iap:checkSeasonsBundle', async () => {
+    const context = getStoreContext();
+    if (!context) return { available: false, owned: false };
+    try {
+        const license = await new Promise((resolve, reject) => {
+            context.getAppLicenseAsync((err, result) => err ? reject(err) : resolve(result));
+        });
+        const addOnLicense = license.addOnLicenses.lookup(FOUR_SEASONS_PRODUCT_ID);
+        return { available: true, owned: !!(addOnLicense && addOnLicense.isActive) };
+    } catch (e) {
+        console.error('[Store IAP] License check failed:', e);
+        return { available: true, owned: false, error: String(e) };
+    }
+});
+
+ipcMain.handle('iap:purchaseSeasonsBundle', async () => {
+    const context = getStoreContext();
+    if (!context) return { success: false, reason: 'store-unavailable' };
+    try {
+        const result = await new Promise((resolve, reject) => {
+            context.requestPurchaseAsync(FOUR_SEASONS_PRODUCT_ID, (err, res) => err ? reject(err) : resolve(res));
+        });
+        // StorePurchaseStatus: 0 Succeeded, 1 AlreadyPurchased, 2 NotPurchased, 3 NetworkError, 4 ServerError
+        const success = result.status === 0 || result.status === 1;
+        return { success, status: result.status };
+    } catch (e) {
+        console.error('[Store IAP] Purchase request failed:', e);
+        return { success: false, error: String(e) };
+    }
+});
+
 // ── DEBUG: Catch any unhandled error in the main process and log it.
 // These will appear in the terminal where you ran `npm start`.
 // Remove these once the freeze is diagnosed.

@@ -11,7 +11,7 @@ const state = {
     bgColor: '#0a0d14',
     bgImagePath: '',
 
-    // Theme FX (Snow / Autumn / Flames packs)
+    // Theme FX (Four Seasons Pack: Winter / Spring / Summer / Autumn)
     fxEffect: 'none',
     fxIntensity: 'medium',
     unlockedEffects: [], // e.g. ['winter', 'autumn'] once purchased via Store IAP
@@ -845,11 +845,15 @@ function saveSettings() {
 // Maps the 3-step intensity slider (0/1/2) to NovaFX's named levels
 const FX_INTENSITY_STEPS = ['low', 'medium', 'high'];
 
+const SEASON_EFFECTS = ['winter', 'spring', 'summer', 'autumn'];
+const ANIME_EFFECTS  = ['aura', 'speedlines', 'sakuragale', 'chispark'];
+
 function applyEffect(effect) {
-    // 'none' is always available; the rest are unlocked together via the bundle
+    // 'none' is always available; the rest are unlocked together via their bundle
     const isUnlocked = effect === 'none' || state.unlockedEffects.includes(effect);
     if (!isUnlocked) {
-        promptSeasonsBundlePurchase();
+        if (SEASON_EFFECTS.includes(effect)) promptSeasonsBundlePurchase();
+        else if (ANIME_EFFECTS.includes(effect)) promptAnimeBundlePurchase();
         return;
     }
     state.fxEffect = effect;
@@ -889,7 +893,36 @@ async function promptSeasonsBundlePurchase() {
     }
 
     if (result && result.success) {
-        state.unlockedEffects = ['winter', 'spring', 'summer', 'autumn'];
+        // add to (not replace) whatever's already unlocked, so this doesn't clobber the other bundle
+        state.unlockedEffects = Array.from(new Set([...state.unlockedEffects, ...SEASON_EFFECTS]));
+        saveSettings();
+        renderEffectLockState();
+    } else {
+        console.log('[NovaFX] Purchase not completed:', result);
+        if (bundleBtn) { bundleBtn.disabled = false; bundleBtn.textContent = 'Unlock all — $2.99'; }
+    }
+}
+
+// Real Microsoft Store purchase flow for the "Anime Effects Pack" add-on.
+// Mirrors promptSeasonsBundlePurchase — same IPC pattern, different product.
+async function promptAnimeBundlePurchase() {
+    if (!window.electronAPI || typeof window.electronAPI.purchaseAnimeBundle !== 'function') {
+        console.warn('[NovaFX] Store purchase API unavailable in this build (are you running the packaged .appx?).');
+        return;
+    }
+    const bundleBtn = document.getElementById('btn-buy-anime-bundle');
+    if (bundleBtn) { bundleBtn.disabled = true; bundleBtn.textContent = 'Processing…'; }
+
+    let result;
+    try {
+        result = await window.electronAPI.purchaseAnimeBundle();
+    } catch (e) {
+        console.error('[NovaFX] Purchase call failed:', e);
+        result = { success: false };
+    }
+
+    if (result && result.success) {
+        state.unlockedEffects = Array.from(new Set([...state.unlockedEffects, ...ANIME_EFFECTS]));
         saveSettings();
         renderEffectLockState();
     } else {
@@ -900,16 +933,27 @@ async function promptSeasonsBundlePurchase() {
 
 // Re-checks ownership against the real Store license on startup, so a
 // user editing localStorage by hand can't fake an unlock — the Store's
-// answer always wins over whatever's cached locally.
+// answer always wins over whatever's cached locally. Checks both bundles
+// independently and merges the results (owning one doesn't affect the other).
 async function verifyOwnedEffectsFromStore() {
-    if (!window.electronAPI || typeof window.electronAPI.checkSeasonsBundleOwned !== 'function') return;
+    if (!window.electronAPI) return;
+    let owned = [];
     try {
-        const result = await window.electronAPI.checkSeasonsBundleOwned();
-        if (result && result.available) {
-            state.unlockedEffects = result.owned ? ['winter', 'spring', 'summer', 'autumn'] : [];
-            saveSettings();
-            renderEffectLockState();
+        if (typeof window.electronAPI.checkSeasonsBundleOwned === 'function') {
+            const seasonsResult = await window.electronAPI.checkSeasonsBundleOwned();
+            if (seasonsResult && seasonsResult.available && seasonsResult.owned) {
+                owned = owned.concat(SEASON_EFFECTS);
+            }
         }
+        if (typeof window.electronAPI.checkAnimeBundleOwned === 'function') {
+            const animeResult = await window.electronAPI.checkAnimeBundleOwned();
+            if (animeResult && animeResult.available && animeResult.owned) {
+                owned = owned.concat(ANIME_EFFECTS);
+            }
+        }
+        state.unlockedEffects = owned;
+        saveSettings();
+        renderEffectLockState();
     } catch (e) {
         console.error('[NovaFX] Store license check failed:', e);
     }
@@ -921,12 +965,17 @@ function renderEffectLockState() {
         const owned = effect === 'none' || state.unlockedEffects.includes(effect);
         o.classList.toggle('locked', !owned);
     });
-    const bundleBtn = document.getElementById('btn-buy-seasons-bundle');
-    if (bundleBtn) {
-        const allOwned = ['winter', 'spring', 'summer', 'autumn']
-            .every(e => state.unlockedEffects.includes(e));
-        bundleBtn.textContent = allOwned ? 'Owned' : 'Unlock all — $2.99';
-        bundleBtn.disabled = allOwned;
+    const seasonsBtn = document.getElementById('btn-buy-seasons-bundle');
+    if (seasonsBtn) {
+        const allOwned = SEASON_EFFECTS.every(e => state.unlockedEffects.includes(e));
+        seasonsBtn.textContent = allOwned ? 'Owned' : 'Unlock all — $2.99';
+        seasonsBtn.disabled = allOwned;
+    }
+    const animeBtn = document.getElementById('btn-buy-anime-bundle');
+    if (animeBtn) {
+        const allOwned = ANIME_EFFECTS.every(e => state.unlockedEffects.includes(e));
+        animeBtn.textContent = allOwned ? 'Owned' : 'Unlock all — $2.99';
+        animeBtn.disabled = allOwned;
     }
 }
 
@@ -1124,6 +1173,10 @@ function setupSettingsListeners() {
     const bundleBtn = document.getElementById('btn-buy-seasons-bundle');
     if (bundleBtn) {
         bundleBtn.onclick = () => promptSeasonsBundlePurchase();
+    }
+    const animeBundleBtn = document.getElementById('btn-buy-anime-bundle');
+    if (animeBundleBtn) {
+        animeBundleBtn.onclick = () => promptAnimeBundlePurchase();
     }
     const intensitySlider = document.getElementById('effect-intensity');
     if (intensitySlider) {

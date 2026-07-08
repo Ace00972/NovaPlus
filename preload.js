@@ -13,6 +13,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     checkSeasonsBundleOwned: () => ipcRenderer.invoke('iap:checkSeasonsBundle'),
     purchaseSeasonsBundle:   () => ipcRenderer.invoke('iap:purchaseSeasonsBundle'),
 
+    // Microsoft Store IAP — Anime Effects Pack
+    checkAnimeBundleOwned: () => ipcRenderer.invoke('iap:checkAnimeBundle'),
+    purchaseAnimeBundle:   () => ipcRenderer.invoke('iap:purchaseAnimeBundle'),
+
     // Resolves a drag-and-dropped File object to its real filesystem path.
     // Required in Electron builds with contextIsolation: true where
     // file.path is no longer populated in the renderer process.

@@ -13,7 +13,15 @@ const { scanDirectory } = require('./src/scanner');
 //
 // Install with:  npm install @nodert-win10-rs4/windows.services.store
 // Then rebuild native modules for Electron's ABI: npx electron-rebuild
-const FOUR_SEASONS_PRODUCT_ID = 'FourSeasonsPack'; // must match the Product ID set in Partner Center
+// IMPORTANT: RequestPurchaseAsync() and the add-on license lookup both key
+// off the Store ID (e.g. "9NL9941Z13B3", shown on the add-on's Overview page
+// in Partner Center) — NOT the "Product ID" string you typed in when first
+// creating the add-on. That Product ID is a separate, less commonly used
+// identifier (InAppOfferToken) that only matters if you're searching a large
+// catalog of add-ons by hand. Get the Store ID from:
+// Partner Center → NovaPlus → Add-ons → [your add-on] → Overview → "Store ID"
+const FOUR_SEASONS_STORE_ID = '9NL9941Z13B3'; // FourSeasonsPack add-on Store ID
+const ANIME_PACK_STORE_ID = '9NJZVH1NG5L5'; // fill in once that add-on is created
 
 let StoreContext = null;
 try {
@@ -22,10 +30,32 @@ try {
     console.warn('[Store IAP] Windows.Services.Store bindings not available (expected when running unpackaged).');
 }
 
+let storeContextInstance = null;
+
 function getStoreContext() {
     if (!StoreContext) return null;
-    try { return StoreContext.getDefault(); }
-    catch (e) { console.error('[Store IAP] Failed to get StoreContext:', e); return null; }
+    if (storeContextInstance) return storeContextInstance;
+    try {
+        storeContextInstance = StoreContext.getDefault();
+        // Desktop Bridge / Win32 apps (which is what an Electron .appx is) must
+        // tell StoreContext which window owns its modal purchase dialogs, via
+        // IInitializeWithWindow — otherwise RequestPurchaseAsync can silently
+        // return "NotPurchased" with no dialog and no error at all.
+        // This call depends on the installed NodeRT package actually exposing
+        // this COM interop method — verify against your installed version;
+        // if it's missing, the purchase call may need a small native addon
+        // instead. See: https://aka.ms/storecontext-for-desktop
+        if (mainWindow && typeof storeContextInstance.initializeWithWindow === 'function') {
+            const hwndBuffer = mainWindow.getNativeWindowHandle();
+            storeContextInstance.initializeWithWindow(hwndBuffer);
+        } else {
+            console.warn('[Store IAP] Could not set owner window on StoreContext — purchase dialog may not appear. See aka.ms/storecontext-for-desktop.');
+        }
+    } catch (e) {
+        console.error('[Store IAP] Failed to get StoreContext:', e);
+        storeContextInstance = null;
+    }
+    return storeContextInstance;
 }
 
 ipcMain.handle('iap:checkSeasonsBundle', async () => {
@@ -35,7 +65,7 @@ ipcMain.handle('iap:checkSeasonsBundle', async () => {
         const license = await new Promise((resolve, reject) => {
             context.getAppLicenseAsync((err, result) => err ? reject(err) : resolve(result));
         });
-        const addOnLicense = license.addOnLicenses.lookup(FOUR_SEASONS_PRODUCT_ID);
+        const addOnLicense = license.addOnLicenses.lookup(FOUR_SEASONS_STORE_ID);
         return { available: true, owned: !!(addOnLicense && addOnLicense.isActive) };
     } catch (e) {
         console.error('[Store IAP] License check failed:', e);
@@ -48,9 +78,39 @@ ipcMain.handle('iap:purchaseSeasonsBundle', async () => {
     if (!context) return { success: false, reason: 'store-unavailable' };
     try {
         const result = await new Promise((resolve, reject) => {
-            context.requestPurchaseAsync(FOUR_SEASONS_PRODUCT_ID, (err, res) => err ? reject(err) : resolve(res));
+            context.requestPurchaseAsync(FOUR_SEASONS_STORE_ID, (err, res) => err ? reject(err) : resolve(res));
         });
         // StorePurchaseStatus: 0 Succeeded, 1 AlreadyPurchased, 2 NotPurchased, 3 NetworkError, 4 ServerError
+        const success = result.status === 0 || result.status === 1;
+        return { success, status: result.status };
+    } catch (e) {
+        console.error('[Store IAP] Purchase request failed:', e);
+        return { success: false, error: String(e) };
+    }
+});
+
+ipcMain.handle('iap:checkAnimeBundle', async () => {
+    const context = getStoreContext();
+    if (!context) return { available: false, owned: false };
+    try {
+        const license = await new Promise((resolve, reject) => {
+            context.getAppLicenseAsync((err, result) => err ? reject(err) : resolve(result));
+        });
+        const addOnLicense = license.addOnLicenses.lookup(ANIME_PACK_STORE_ID);
+        return { available: true, owned: !!(addOnLicense && addOnLicense.isActive) };
+    } catch (e) {
+        console.error('[Store IAP] License check failed:', e);
+        return { available: true, owned: false, error: String(e) };
+    }
+});
+
+ipcMain.handle('iap:purchaseAnimeBundle', async () => {
+    const context = getStoreContext();
+    if (!context) return { success: false, reason: 'store-unavailable' };
+    try {
+        const result = await new Promise((resolve, reject) => {
+            context.requestPurchaseAsync(ANIME_PACK_STORE_ID, (err, res) => err ? reject(err) : resolve(res));
+        });
         const success = result.status === 0 || result.status === 1;
         return { success, status: result.status };
     } catch (e) {

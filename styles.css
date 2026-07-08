@@ -27,7 +27,7 @@ body {
                       radial-gradient(circle at 100% 100%, rgba(163, 133, 255, 0.05) 0%, transparent 50%);
 }
 
-/* Ambient FX overlay (Theme Packs: snow / autumn / flames) */
+/* Ambient FX overlay (Theme Packs: winter / spring / summer / autumn) */
 #fx-canvas {
     position: fixed;
     inset: 0;
@@ -81,11 +81,15 @@ body {
     font-size: 1.1rem;
 }
 
-.effect-preview.fx-winter-preview::after   { content: '❄'; color: #cfe8ff; }
-.effect-preview.fx-spring-preview::after   { content: '🌸'; }
-.effect-preview.fx-summer-preview::after   { content: '✨'; }
-.effect-preview.fx-autumn-preview::after   { content: '🍂'; }
-.effect-preview.fx-none-preview::after     { content: '—'; color: var(--text-muted); }
+.effect-preview.fx-winter-preview::after     { content: '❄'; color: #cfe8ff; }
+.effect-preview.fx-spring-preview::after     { content: '🌸'; }
+.effect-preview.fx-summer-preview::after     { content: '✨'; }
+.effect-preview.fx-autumn-preview::after     { content: '🍂'; }
+.effect-preview.fx-none-preview::after       { content: '—'; color: var(--text-muted); }
+.effect-preview.fx-aura-preview::after       { content: '🌀'; color: #b090ff; }
+.effect-preview.fx-speedlines-preview::after { content: '💨'; }
+.effect-preview.fx-sakuragale-preview::after { content: '🌪'; }
+.effect-preview.fx-chispark-preview::after   { content: '⚡'; color: #9ec8ff; }
 
 .effect-option span {
     font-size: 0.8rem;

@@ -1,6 +1,6 @@
 {
   "name": "novaplus",
-  "version": "2.1.10",
+  "version": "2.1.11",
   "description": "A premium glassmorphic local media player built with Electron",
   "main": "main.js",
   "scripts": {

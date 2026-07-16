@@ -1,122 +1,122 @@
 const { app, BrowserWindow, ipcMain, dialog, protocol } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { scanDirectory } = require('./src/scanner');
 
-// ── Microsoft Store IAP bridge (Four Seasons Pack) ──────────────────────
-// Windows.Services.Store is a WinRT API — Electron can't call it directly
-// from renderer JS, so we load it here in the main process via NodeRT
-// (a native Node addon that exposes WinRT namespaces) and relay results to
-// the renderer over IPC. This ONLY works when the app is running with a
-// package identity (i.e. installed as the .appx via the Microsoft Store
-// or sideloaded) — it will not work when running unpackaged with
-// `npm start`. Falls back gracefully to "unavailable" in that case.
-//
-// Install with:  npm install @nodert-win10-rs4/windows.services.store
-// Then rebuild native modules for Electron's ABI: npx electron-rebuild
-// IMPORTANT: RequestPurchaseAsync() and the add-on license lookup both key
-// off the Store ID (e.g. "9NL9941Z13B3", shown on the add-on's Overview page
-// in Partner Center) — NOT the "Product ID" string you typed in when first
-// creating the add-on. That Product ID is a separate, less commonly used
-// identifier (InAppOfferToken) that only matters if you're searching a large
-// catalog of add-ons by hand. Get the Store ID from:
-// Partner Center → NovaPlus → Add-ons → [your add-on] → Overview → "Store ID"
-const FOUR_SEASONS_STORE_ID = '9NL9941Z13B3'; // FourSeasonsPack add-on Store ID
-const ANIME_PACK_STORE_ID = '9NJZVH1NG5L5'; // fill in once that add-on is created
-
-let StoreContext = null;
-try {
-    ({ StoreContext } = require('@nodert-win10-rs4/windows.services.store'));
-} catch (e) {
-    console.warn('[Store IAP] Windows.Services.Store bindings not available (expected when running unpackaged).');
+// ── Store IAP diagnostic log file ───────────────────────────────────────
+// The installed .appx has no attached console, so main-process
+// console.warn/error is invisible to us. This writes the same messages to
+// a plain text file instead: %APPDATA%/novaplus/store-iap.log (path is
+// logged to console too, for when you ARE running from a terminal).
+// Safe to delete this whole block once IAP is confirmed working.
+let iapLogPath = null;
+function iapLog(...args) {
+    const line = `[${new Date().toISOString()}] ${args.map(a => a instanceof Error ? a.stack : (typeof a === 'object' ? JSON.stringify(a) : a)).join(' ')}\n`;
+    console.log(line.trim());
+    try {
+        if (!iapLogPath) iapLogPath = path.join(app.getPath('userData'), 'store-iap.log');
+        fs.appendFileSync(iapLogPath, line);
+    } catch (e) { /* best-effort only */ }
 }
 
-let storeContextInstance = null;
+// ── Microsoft Store IAP bridge (Four Seasons Pack + Anime Effects Pack) ─
+// Windows.Services.Store is a WinRT API — Electron itself can't call it
+// directly. The first attempt at this used a native Node addon
+// (@nodert-win10-rs4/windows.services.store) to bridge it, but that
+// package hadn't been updated in 5 years and wouldn't compile against a
+// modern Electron/node-gyp/Visual Studio toolchain (missing Python, then
+// an unrecognized VS version, then npm config incompatibilities — a
+// cascade of dead ends). This version instead spawns a small separate
+// C# console app (StoreHelper.exe, in /StoreHelper) that talks to
+// Windows.Services.Store directly via Microsoft's actively-maintained
+// CsWinRT projection — completely different toolchain (dotnet build),
+// no node-gyp involved at all. It prints one line of JSON to stdout and
+// exits; we just run it and parse that line.
+//
+// IMPORTANT: both calls key off the Store ID (e.g. "9NL9941Z13B3", shown
+// on the add-on's Overview page in Partner Center) — NOT the "Product ID"
+// string typed in when first creating the add-on.
+const { execFile } = require('child_process');
+const FOUR_SEASONS_STORE_ID = '9NL9941Z13B3'; // FourSeasonsPack add-on Store ID
+const ANIME_PACK_STORE_ID = '9NJZVH1NG5L5'; // AnimeEffectsPack add-on Store ID
 
-function getStoreContext() {
-    if (!StoreContext) return null;
-    if (storeContextInstance) return storeContextInstance;
-    try {
-        storeContextInstance = StoreContext.getDefault();
-        // Desktop Bridge / Win32 apps (which is what an Electron .appx is) must
-        // tell StoreContext which window owns its modal purchase dialogs, via
-        // IInitializeWithWindow — otherwise RequestPurchaseAsync can silently
-        // return "NotPurchased" with no dialog and no error at all.
-        // This call depends on the installed NodeRT package actually exposing
-        // this COM interop method — verify against your installed version;
-        // if it's missing, the purchase call may need a small native addon
-        // instead. See: https://aka.ms/storecontext-for-desktop
-        if (mainWindow && typeof storeContextInstance.initializeWithWindow === 'function') {
-            const hwndBuffer = mainWindow.getNativeWindowHandle();
-            storeContextInstance.initializeWithWindow(hwndBuffer);
-        } else {
-            console.warn('[Store IAP] Could not set owner window on StoreContext — purchase dialog may not appear. See aka.ms/storecontext-for-desktop.');
-        }
-    } catch (e) {
-        console.error('[Store IAP] Failed to get StoreContext:', e);
-        storeContextInstance = null;
+function getStoreHelperPath() {
+    // Packaged app: StoreHelper.exe ships under resources/store-helper/
+    // (see the "extraResources" entry in package.json's build config).
+    // Unpackaged dev run: reads straight from the project's StoreHelper
+    // publish output.
+    if (app.isPackaged) {
+        return path.join(process.resourcesPath, 'store-helper', 'StoreHelper.exe');
     }
-    return storeContextInstance;
+    return path.join(__dirname, 'StoreHelper', 'bin', 'Release', 'net8.0-windows10.0.19041.0', 'win-x64', 'publish', 'StoreHelper.exe');
+}
+
+function runStoreHelper(args) {
+    return new Promise((resolve) => {
+        const exePath = getStoreHelperPath();
+        execFile(exePath, args, { timeout: 30000 }, (err, stdout, stderr) => {
+            // StoreHelper.exe exits with non-zero codes for legitimate,
+            // non-error outcomes (user canceled, declined, etc.) while
+            // still printing valid JSON to stdout. So: try to parse stdout
+            // FIRST regardless of exit code, and only fall back to the
+            // generic "unavailable" error if there's truly no usable JSON
+            // (e.g. the exe crashed or couldn't be found at all).
+            const line = (stdout || '').trim().split('\n')[0];
+            try {
+                const parsed = JSON.parse(line);
+                iapLog('[Store IAP] StoreHelper.exe', args.join(' '), '->', parsed, err ? `(exit code present: ${err.code})` : '');
+                resolve(parsed);
+                return;
+            } catch (e) {
+                // fall through to error handling below
+            }
+
+            if (err) {
+                iapLog('[Store IAP] StoreHelper.exe failed to run:', err, 'stderr:', stderr);
+                resolve({ available: false, success: false, reason: 'store-helper-unavailable' });
+                return;
+            }
+
+            iapLog('[Store IAP] Failed to parse StoreHelper.exe output:', line);
+            resolve({ available: false, success: false, reason: 'store-helper-bad-output' });
+        });
+    });
+}
+
+function getOwnerHwndArg() {
+    // Electron gives us the window handle as a Buffer; StoreHelper.exe
+    // expects it as a plain decimal string it can parse back into a
+    // native pointer via IntPtr in C#.
+    try {
+        if (!mainWindow) return null;
+        const buf = mainWindow.getNativeWindowHandle();
+        return buf.readBigUInt64LE(0).toString();
+    } catch (e) {
+        iapLog('[Store IAP] Could not read native window handle:', e);
+        return null;
+    }
 }
 
 ipcMain.handle('iap:checkSeasonsBundle', async () => {
-    const context = getStoreContext();
-    if (!context) return { available: false, owned: false };
-    try {
-        const license = await new Promise((resolve, reject) => {
-            context.getAppLicenseAsync((err, result) => err ? reject(err) : resolve(result));
-        });
-        const addOnLicense = license.addOnLicenses.lookup(FOUR_SEASONS_STORE_ID);
-        return { available: true, owned: !!(addOnLicense && addOnLicense.isActive) };
-    } catch (e) {
-        console.error('[Store IAP] License check failed:', e);
-        return { available: true, owned: false, error: String(e) };
-    }
+    return await runStoreHelper(['checklicense', FOUR_SEASONS_STORE_ID]);
 });
 
 ipcMain.handle('iap:purchaseSeasonsBundle', async () => {
-    const context = getStoreContext();
-    if (!context) return { success: false, reason: 'store-unavailable' };
-    try {
-        const result = await new Promise((resolve, reject) => {
-            context.requestPurchaseAsync(FOUR_SEASONS_STORE_ID, (err, res) => err ? reject(err) : resolve(res));
-        });
-        // StorePurchaseStatus: 0 Succeeded, 1 AlreadyPurchased, 2 NotPurchased, 3 NetworkError, 4 ServerError
-        const success = result.status === 0 || result.status === 1;
-        return { success, status: result.status };
-    } catch (e) {
-        console.error('[Store IAP] Purchase request failed:', e);
-        return { success: false, error: String(e) };
-    }
+    const hwnd = getOwnerHwndArg();
+    const args = ['purchase', FOUR_SEASONS_STORE_ID];
+    if (hwnd) args.push(hwnd);
+    return await runStoreHelper(args);
 });
 
 ipcMain.handle('iap:checkAnimeBundle', async () => {
-    const context = getStoreContext();
-    if (!context) return { available: false, owned: false };
-    try {
-        const license = await new Promise((resolve, reject) => {
-            context.getAppLicenseAsync((err, result) => err ? reject(err) : resolve(result));
-        });
-        const addOnLicense = license.addOnLicenses.lookup(ANIME_PACK_STORE_ID);
-        return { available: true, owned: !!(addOnLicense && addOnLicense.isActive) };
-    } catch (e) {
-        console.error('[Store IAP] License check failed:', e);
-        return { available: true, owned: false, error: String(e) };
-    }
+    return await runStoreHelper(['checklicense', ANIME_PACK_STORE_ID]);
 });
 
 ipcMain.handle('iap:purchaseAnimeBundle', async () => {
-    const context = getStoreContext();
-    if (!context) return { success: false, reason: 'store-unavailable' };
-    try {
-        const result = await new Promise((resolve, reject) => {
-            context.requestPurchaseAsync(ANIME_PACK_STORE_ID, (err, res) => err ? reject(err) : resolve(res));
-        });
-        const success = result.status === 0 || result.status === 1;
-        return { success, status: result.status };
-    } catch (e) {
-        console.error('[Store IAP] Purchase request failed:', e);
-        return { success: false, error: String(e) };
-    }
+    const hwnd = getOwnerHwndArg();
+    const args = ['purchase', ANIME_PACK_STORE_ID];
+    if (hwnd) args.push(hwnd);
+    return await runStoreHelper(args);
 });
 
 // ── DEBUG: Catch any unhandled error in the main process and log it.

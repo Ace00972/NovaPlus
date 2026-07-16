@@ -1,0 +1,2 @@
+C:\Users\dravi\OneDrive\Desktop\NovaPlus\StoreHelper\bin\Release\net8.0-windows10.0.19041.0\win-x64\publish\StoreHelper.pdb
+C:\Users\dravi\OneDrive\Desktop\NovaPlus\StoreHelper\bin\Release\net8.0-windows10.0.19041.0\win-x64\publish\StoreHelper.exe

@@ -845,6 +845,12 @@ function saveSettings() {
 // Maps the 3-step intensity slider (0/1/2) to NovaFX's named levels
 const FX_INTENSITY_STEPS = ['low', 'medium', 'high'];
 
+// TEMPORARY: flip to true once the Store IAP native module issue is
+// resolved and verified working end-to-end. While false, both bundle
+// buttons show as "Coming Soon" instead of a purchase button that would
+// silently fail — ship this way rather than a button that looks broken.
+const IAP_PURCHASES_ENABLED = true;
+
 const SEASON_EFFECTS = ['winter', 'spring', 'summer', 'autumn'];
 const ANIME_EFFECTS  = ['aura', 'speedlines', 'sakuragale', 'chispark'];
 
@@ -852,6 +858,7 @@ function applyEffect(effect) {
     // 'none' is always available; the rest are unlocked together via their bundle
     const isUnlocked = effect === 'none' || state.unlockedEffects.includes(effect);
     if (!isUnlocked) {
+        if (!IAP_PURCHASES_ENABLED) return; // purchases temporarily disabled — see flag above
         if (SEASON_EFFECTS.includes(effect)) promptSeasonsBundlePurchase();
         else if (ANIME_EFFECTS.includes(effect)) promptAnimeBundlePurchase();
         return;
@@ -968,14 +975,24 @@ function renderEffectLockState() {
     const seasonsBtn = document.getElementById('btn-buy-seasons-bundle');
     if (seasonsBtn) {
         const allOwned = SEASON_EFFECTS.every(e => state.unlockedEffects.includes(e));
-        seasonsBtn.textContent = allOwned ? 'Owned' : 'Unlock all — $2.99';
-        seasonsBtn.disabled = allOwned;
+        if (!IAP_PURCHASES_ENABLED && !allOwned) {
+            seasonsBtn.textContent = 'Coming Soon';
+            seasonsBtn.disabled = true;
+        } else {
+            seasonsBtn.textContent = allOwned ? 'Owned' : 'Unlock all — $2.99';
+            seasonsBtn.disabled = allOwned;
+        }
     }
     const animeBtn = document.getElementById('btn-buy-anime-bundle');
     if (animeBtn) {
         const allOwned = ANIME_EFFECTS.every(e => state.unlockedEffects.includes(e));
-        animeBtn.textContent = allOwned ? 'Owned' : 'Unlock all — $2.99';
-        animeBtn.disabled = allOwned;
+        if (!IAP_PURCHASES_ENABLED && !allOwned) {
+            animeBtn.textContent = 'Coming Soon';
+            animeBtn.disabled = true;
+        } else {
+            animeBtn.textContent = allOwned ? 'Owned' : 'Unlock all — $2.99';
+            animeBtn.disabled = allOwned;
+        }
     }
 }
 

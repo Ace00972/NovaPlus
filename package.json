@@ -1,14 +1,14 @@
 {
   "name": "novaplus",
-  "version": "2.1.9",
+  "version": "2.1.10",
   "description": "A premium glassmorphic local media player built with Electron",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "dev": "electron . --inspect",
-    "build": "electron-builder --win appx",
-    "build:installer": "electron-builder --win nsis",
-    "rebuild": "electron-rebuild -f -w @nodert-win10-rs4/windows.services.store"
+    "build:storehelper": "dotnet publish ./StoreHelper/StoreHelper.csproj -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true",
+    "build": "npm run build:storehelper && electron-builder --win appx",
+    "build:installer": "npm run build:storehelper && electron-builder --win nsis"
   },
   "keywords": [
     "media-player",
@@ -23,13 +23,11 @@
   },
   "license": "MIT",
   "dependencies": {
-    "music-metadata": "^7.13.4",
-    "@nodert-win10-rs4/windows.services.store": "^0.2.0"
+    "music-metadata": "^7.13.4"
   },
   "devDependencies": {
     "electron": "^28.2.0",
-    "electron-builder": "^24.13.3",
-    "electron-rebuild": "^3.2.9"
+    "electron-builder": "^24.13.3"
   },
   "build": {
     "appId": "com.acegen.novaplus",
@@ -43,7 +41,14 @@
       "**/*",
       "!dist/**",
       "!node_modules/.cache/**",
-      "!**/*.map"
+      "!**/*.map",
+      "!StoreHelper/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "StoreHelper/bin/Release/net8.0-windows10.0.19041.0/win-x64/publish/StoreHelper.exe",
+        "to": "store-helper/StoreHelper.exe"
+      }
     ],
     "win": {
       "target": [

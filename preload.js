@@ -17,6 +17,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     checkAnimeBundleOwned: () => ipcRenderer.invoke('iap:checkAnimeBundle'),
     purchaseAnimeBundle:   () => ipcRenderer.invoke('iap:purchaseAnimeBundle'),
 
+    // Microsoft Store IAP — Night Ambience Pack (Rain, Starfield, Fireflies, Fog)
+    checkNightBundleOwned: () => ipcRenderer.invoke('iap:checkNightBundle'),
+    purchaseNightBundle:   () => ipcRenderer.invoke('iap:purchaseNightBundle'),
+
     // Resolves a drag-and-dropped File object to its real filesystem path.
     // Required in Electron builds with contextIsolation: true where
     // file.path is no longer populated in the renderer process.
@@ -35,6 +39,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     pipTime:   (data) => ipcRenderer.send('pip-time', data),
     pipState:  (playing) => ipcRenderer.send('pip-state', playing),
     pipCmd:    (cmd)  => ipcRenderer.send('pip-cmd', cmd),
+    pipFx:     (fx)   => ipcRenderer.send('pip-fx', fx),
 
     // Listeners: main -> main window
     onPipCmd:               (cb) => ipcRenderer.on('pip-cmd',               (e, cmd)     => cb(cmd)),
@@ -46,4 +51,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onPipTrack: (cb) => ipcRenderer.on('pip-track', (e, track)   => cb(track)),
     onPipTime:  (cb) => ipcRenderer.on('pip-time',  (e, data)    => cb(data)),
     onPipState: (cb) => ipcRenderer.on('pip-state', (e, playing) => cb(playing)),
+    onPipFx:    (cb) => ipcRenderer.on('pip-fx',    (e, fx)      => cb(fx)),
 });

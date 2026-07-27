@@ -39,6 +39,7 @@ function iapLog(...args) {
 const { execFile } = require('child_process');
 const FOUR_SEASONS_STORE_ID = '9NL9941Z13B3'; // FourSeasonsPack add-on Store ID
 const ANIME_PACK_STORE_ID = '9NJZVH1NG5L5'; // AnimeEffectsPack add-on Store ID
+const NIGHT_PACK_STORE_ID = 'REPLACE_WITH_NIGHT_PACK_STORE_ID'; // NightAmbiencePack add-on Store ID — set this after creating the add-on in Partner Center
 
 function getStoreHelperPath() {
     // Packaged app: StoreHelper.exe ships under resources/store-helper/
@@ -119,6 +120,25 @@ ipcMain.handle('iap:purchaseAnimeBundle', async () => {
     return await runStoreHelper(args);
 });
 
+ipcMain.handle('iap:checkNightBundle', async () => {
+    if (NIGHT_PACK_STORE_ID.startsWith('REPLACE_')) {
+        iapLog('[Store IAP] Night Ambience Pack Store ID not configured yet — skipping call.');
+        return { available: false, success: false, reason: 'night-pack-store-id-not-configured' };
+    }
+    return await runStoreHelper(['checklicense', NIGHT_PACK_STORE_ID]);
+});
+
+ipcMain.handle('iap:purchaseNightBundle', async () => {
+    if (NIGHT_PACK_STORE_ID.startsWith('REPLACE_')) {
+        iapLog('[Store IAP] Night Ambience Pack Store ID not configured yet — skipping call.');
+        return { available: false, success: false, reason: 'night-pack-store-id-not-configured' };
+    }
+    const hwnd = getOwnerHwndArg();
+    const args = ['purchase', NIGHT_PACK_STORE_ID];
+    if (hwnd) args.push(hwnd);
+    return await runStoreHelper(args);
+});
+
 // ── DEBUG: Catch any unhandled error in the main process and log it.
 // These will appear in the terminal where you ran `npm start`.
 // Remove these once the freeze is diagnosed.
@@ -189,6 +209,9 @@ mainWindow.webContents.session.webRequest.onBeforeSendHeaders((details, callback
 function createPip(trackInfo) {
     if (pipWindow && !pipWindow.isDestroyed()) {
         pipWindow.webContents.send('pip-track', trackInfo);
+        if (trackInfo.fxEffect) {
+            pipWindow.webContents.send('pip-fx', { effect: trackInfo.fxEffect, intensity: trackInfo.fxIntensity });
+        }
         pipWindow.show();
         return;
     }
@@ -212,6 +235,12 @@ function createPip(trackInfo) {
 
     pipWindow.webContents.on('did-finish-load', () => {
         pipWindow.webContents.send('pip-track', trackInfo);
+        // Piggybacks on the same reliable post-load checkpoint used for
+        // track info, since main.js has no independent knowledge of the
+        // current effect — it only knows what the main window told it.
+        if (trackInfo.fxEffect) {
+            pipWindow.webContents.send('pip-fx', { effect: trackInfo.fxEffect, intensity: trackInfo.fxIntensity });
+        }
     });
 
     // ── DEBUG: Log PiP renderer crashes too
@@ -261,6 +290,12 @@ ipcMain.on('pip-time', (event, data) => {
 ipcMain.on('pip-state', (event, playing) => {
     if (pipWindow && !pipWindow.isDestroyed()) {
         pipWindow.webContents.send('pip-state', playing);
+    }
+});
+
+ipcMain.on('pip-fx', (event, fx) => {
+    if (pipWindow && !pipWindow.isDestroyed()) {
+        pipWindow.webContents.send('pip-fx', fx);
     }
 });
 

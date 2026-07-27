@@ -8,7 +8,7 @@
         :root {
             --accent: #63b3ff;
             --accent-glow: rgba(99,179,255,0.26);
-            --bg: rgba(10,13,20,0.97);
+            --bg: rgba(10,13,20,0.88);
             --glass: rgba(255,255,255,0.05);
             --glass-border: rgba(255,255,255,0.1);
             --text: #e8edf5;
@@ -37,7 +37,26 @@
             flex-direction: column;
             justify-content: space-between;
             position: relative;
+            overflow: hidden;
             -webkit-app-region: drag;
+        }
+
+        #fx-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .pip-content {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 100%;
         }
 
         .header {
@@ -226,6 +245,8 @@
 <body>
 
 <div class="pip">
+    <canvas id="fx-canvas"></canvas>
+    <div class="pip-content">
     <div class="header">
         <div class="app-title">NovaPlus Mini</div>
         <div class="top-ctrls">
@@ -265,9 +286,24 @@
             <input type="range" class="slider" id="pip-vol" min="0" max="100" value="100">
         </div>
     </div>
+    </div>
 </div>
 
+<script src="theme-fx.js"></script>
+
 <script>
+    if (window.NovaFX) {
+        NovaFX.mount(document.getElementById('fx-canvas'));
+    }
+
+    // Receives the currently active theme effect from the main window,
+    // synced on PiP open (via pipOpen's fxEffect/fxIntensity fields) and
+    // live whenever the user changes it while PiP is open.
+    window.electronAPI.onPipFx((fx) => {
+        if (!window.NovaFX || !fx || !fx.effect) return;
+        NovaFX.setEffect(fx.effect, { intensity: fx.intensity || 'medium' });
+    });
+
     function fmt(s) {
         if (!s || isNaN(s)) return '0:00';
         const m = Math.floor(s / 60);

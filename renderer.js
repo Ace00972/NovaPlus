@@ -435,6 +435,8 @@ function triggerPipMode() {
         poster: state.activeTrackItem.poster || null,
         accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
         volume: audioElement ? audioElement.volume : 1,
+        fxEffect: state.fxEffect,
+        fxIntensity: state.fxIntensity,
     });
 }
 
@@ -446,6 +448,8 @@ function updatePipTrack() {
         poster: state.activeTrackItem.poster || null,
         accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
         volume: audioElement ? audioElement.volume : 1,
+        fxEffect: state.fxEffect,
+        fxIntensity: state.fxIntensity,
     });
 }
 
@@ -849,23 +853,30 @@ const FX_INTENSITY_STEPS = ['low', 'medium', 'high'];
 // resolved and verified working end-to-end. While false, both bundle
 // buttons show as "Coming Soon" instead of a purchase button that would
 // silently fail — ship this way rather than a button that looks broken.
-const IAP_PURCHASES_ENABLED = true;
+const IAP_PURCHASES_ENABLED = true; // Four Seasons Pack + Anime Effects Pack are live
+const NIGHT_PACK_READY = false; // flip to true once NIGHT_PACK_STORE_ID (main.js) is set to a real Store ID
 
 const SEASON_EFFECTS = ['winter', 'spring', 'summer', 'autumn'];
 const ANIME_EFFECTS  = ['aura', 'speedlines', 'sakuragale', 'chispark'];
+const NIGHT_EFFECTS  = ['rain', 'starfield', 'fireflies', 'fog'];
 
 function applyEffect(effect) {
     // 'none' is always available; the rest are unlocked together via their bundle
     const isUnlocked = effect === 'none' || state.unlockedEffects.includes(effect);
     if (!isUnlocked) {
         if (!IAP_PURCHASES_ENABLED) return; // purchases temporarily disabled — see flag above
+        if (NIGHT_EFFECTS.includes(effect) && !NIGHT_PACK_READY) return; // no real Store ID configured yet
         if (SEASON_EFFECTS.includes(effect)) promptSeasonsBundlePurchase();
         else if (ANIME_EFFECTS.includes(effect)) promptAnimeBundlePurchase();
+        else if (NIGHT_EFFECTS.includes(effect)) promptNightBundlePurchase();
         return;
     }
     state.fxEffect = effect;
     if (window.NovaFX) {
         NovaFX.setEffect(effect, { intensity: state.fxIntensity });
+    }
+    if (state.pipActive && window.electronAPI && typeof window.electronAPI.pipFx === 'function') {
+        window.electronAPI.pipFx({ effect: state.fxEffect, intensity: state.fxIntensity });
     }
     document.querySelectorAll('.effect-option').forEach(o =>
         o.classList.toggle('active', o.dataset.effect === effect));
@@ -875,6 +886,9 @@ function applyEffect(effect) {
 function applyEffectIntensity(intensity) {
     state.fxIntensity = intensity;
     if (window.NovaFX) NovaFX.setIntensity(intensity);
+    if (state.pipActive && window.electronAPI && typeof window.electronAPI.pipFx === 'function') {
+        window.electronAPI.pipFx({ effect: state.fxEffect, intensity: state.fxIntensity });
+    }
     saveSettings();
 }
 
@@ -938,6 +952,35 @@ async function promptAnimeBundlePurchase() {
     }
 }
 
+// Real Microsoft Store purchase flow for the "Night Ambience Pack" add-on.
+// Mirrors promptSeasonsBundlePurchase/promptAnimeBundlePurchase — same
+// IPC pattern, different product (Rainfall, Starfield, Fireflies, Fog).
+async function promptNightBundlePurchase() {
+    if (!window.electronAPI || typeof window.electronAPI.purchaseNightBundle !== 'function') {
+        console.warn('[NovaFX] Store purchase API unavailable in this build (are you running the packaged .appx?).');
+        return;
+    }
+    const bundleBtn = document.getElementById('btn-buy-night-bundle');
+    if (bundleBtn) { bundleBtn.disabled = true; bundleBtn.textContent = 'Processing…'; }
+
+    let result;
+    try {
+        result = await window.electronAPI.purchaseNightBundle();
+    } catch (e) {
+        console.error('[NovaFX] Purchase call failed:', e);
+        result = { success: false };
+    }
+
+    if (result && result.success) {
+        state.unlockedEffects = Array.from(new Set([...state.unlockedEffects, ...NIGHT_EFFECTS]));
+        saveSettings();
+        renderEffectLockState();
+    } else {
+        console.log('[NovaFX] Purchase not completed:', result);
+        if (bundleBtn) { bundleBtn.disabled = false; bundleBtn.textContent = 'Unlock all — $2.99'; }
+    }
+}
+
 // Re-checks ownership against the real Store license on startup, so a
 // user editing localStorage by hand can't fake an unlock — the Store's
 // answer always wins over whatever's cached locally. Checks both bundles
@@ -956,6 +999,12 @@ async function verifyOwnedEffectsFromStore() {
             const animeResult = await window.electronAPI.checkAnimeBundleOwned();
             if (animeResult && animeResult.available && animeResult.owned) {
                 owned = owned.concat(ANIME_EFFECTS);
+            }
+        }
+        if (typeof window.electronAPI.checkNightBundleOwned === 'function') {
+            const nightResult = await window.electronAPI.checkNightBundleOwned();
+            if (nightResult && nightResult.available && nightResult.owned) {
+                owned = owned.concat(NIGHT_EFFECTS);
             }
         }
         state.unlockedEffects = owned;
@@ -992,6 +1041,20 @@ function renderEffectLockState() {
         } else {
             animeBtn.textContent = allOwned ? 'Owned' : 'Unlock all — $2.99';
             animeBtn.disabled = allOwned;
+        }
+    }
+    const nightBtn = document.getElementById('btn-buy-night-bundle');
+    if (nightBtn) {
+        const allOwned = NIGHT_EFFECTS.every(e => state.unlockedEffects.includes(e));
+        // Night Ambience Pack has no real Store ID configured yet (see
+        // NIGHT_PACK_STORE_ID in main.js) — show Coming Soon regardless of
+        // IAP_PURCHASES_ENABLED, which only governs the two live bundles.
+        if (!allOwned) {
+            nightBtn.textContent = 'Coming Soon';
+            nightBtn.disabled = true;
+        } else {
+            nightBtn.textContent = 'Owned';
+            nightBtn.disabled = true;
         }
     }
 }
@@ -1194,6 +1257,10 @@ function setupSettingsListeners() {
     const animeBundleBtn = document.getElementById('btn-buy-anime-bundle');
     if (animeBundleBtn) {
         animeBundleBtn.onclick = () => promptAnimeBundlePurchase();
+    }
+    const nightBundleBtn = document.getElementById('btn-buy-night-bundle');
+    if (nightBundleBtn) {
+        nightBundleBtn.onclick = () => promptNightBundlePurchase();
     }
     const intensitySlider = document.getElementById('effect-intensity');
     if (intensitySlider) {

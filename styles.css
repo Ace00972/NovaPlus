@@ -90,6 +90,10 @@ body {
 .effect-preview.fx-speedlines-preview::after { content: '💨'; }
 .effect-preview.fx-sakuragale-preview::after { content: '🌪'; }
 .effect-preview.fx-chispark-preview::after   { content: '⚡'; color: #9ec8ff; }
+.effect-preview.fx-rain-preview::after       { content: '🌧'; color: #a8c4dd; }
+.effect-preview.fx-starfield-preview::after  { content: '✦'; color: #dfe8ff; }
+.effect-preview.fx-fireflies-preview::after  { content: '🌟'; color: #ffd682; }
+.effect-preview.fx-fog-preview::after        { content: '≈'; color: #c8ced8; }
 
 .effect-option span {
     font-size: 0.8rem;

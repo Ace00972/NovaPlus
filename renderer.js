@@ -892,30 +892,45 @@ function applyEffectIntensity(intensity) {
     saveSettings();
 }
 
-// Real Microsoft Store purchase flow for the "Four Seasons Pack" add-on.
+// Config for each Store IAP bundle: which effects it unlocks, which
+// preload/IPC methods drive it, and which DOM button represents it.
+// Adding a fourth bundle later means adding one entry here, not one more
+// copy-pasted prompt*BundlePurchase function.
+// isReady covers a bundle whose Store add-on isn't configured yet
+// (Night Ambience Pack still has a placeholder Store ID in main.js) —
+// such a bundle shows "Coming Soon" regardless of IAP_PURCHASES_ENABLED.
+const IAP_BUNDLES = {
+    seasons: { effects: SEASON_EFFECTS, purchaseFn: 'purchaseSeasonsBundle', checkFn: 'checkSeasonsBundleOwned', buttonId: 'btn-buy-seasons-bundle', isReady: true },
+    anime:   { effects: ANIME_EFFECTS,  purchaseFn: 'purchaseAnimeBundle',   checkFn: 'checkAnimeBundleOwned',   buttonId: 'btn-buy-anime-bundle',   isReady: true },
+    night:   { effects: NIGHT_EFFECTS,  purchaseFn: 'purchaseNightBundle',   checkFn: 'checkNightBundleOwned',   buttonId: 'btn-buy-night-bundle',   isReady: NIGHT_PACK_READY },
+};
+
+// Real Microsoft Store purchase flow, shared by all three bundles above.
 // Calls through preload -> main process -> Windows.Services.Store (see main.js).
 // Only functions when running as the installed .appx; in unpackaged dev
 // mode (npm start) this will report unavailable and just log, so local
 // testing never fails hard.
-async function promptSeasonsBundlePurchase() {
-    if (!window.electronAPI || typeof window.electronAPI.purchaseSeasonsBundle !== 'function') {
+async function purchaseBundle(bundleKey) {
+    const bundle = IAP_BUNDLES[bundleKey];
+    const purchaseFn = window.electronAPI && window.electronAPI[bundle.purchaseFn];
+    if (typeof purchaseFn !== 'function') {
         console.warn('[NovaFX] Store purchase API unavailable in this build (are you running the packaged .appx?).');
         return;
     }
-    const bundleBtn = document.getElementById('btn-buy-seasons-bundle');
+    const bundleBtn = document.getElementById(bundle.buttonId);
     if (bundleBtn) { bundleBtn.disabled = true; bundleBtn.textContent = 'Processing…'; }
 
     let result;
     try {
-        result = await window.electronAPI.purchaseSeasonsBundle();
+        result = await purchaseFn();
     } catch (e) {
         console.error('[NovaFX] Purchase call failed:', e);
         result = { success: false };
     }
 
     if (result && result.success) {
-        // add to (not replace) whatever's already unlocked, so this doesn't clobber the other bundle
-        state.unlockedEffects = Array.from(new Set([...state.unlockedEffects, ...SEASON_EFFECTS]));
+        // add to (not replace) whatever's already unlocked, so this doesn't clobber other bundles
+        state.unlockedEffects = Array.from(new Set([...state.unlockedEffects, ...bundle.effects]));
         saveSettings();
         renderEffectLockState();
     } else {
@@ -924,62 +939,9 @@ async function promptSeasonsBundlePurchase() {
     }
 }
 
-// Real Microsoft Store purchase flow for the "Anime Effects Pack" add-on.
-// Mirrors promptSeasonsBundlePurchase — same IPC pattern, different product.
-async function promptAnimeBundlePurchase() {
-    if (!window.electronAPI || typeof window.electronAPI.purchaseAnimeBundle !== 'function') {
-        console.warn('[NovaFX] Store purchase API unavailable in this build (are you running the packaged .appx?).');
-        return;
-    }
-    const bundleBtn = document.getElementById('btn-buy-anime-bundle');
-    if (bundleBtn) { bundleBtn.disabled = true; bundleBtn.textContent = 'Processing…'; }
-
-    let result;
-    try {
-        result = await window.electronAPI.purchaseAnimeBundle();
-    } catch (e) {
-        console.error('[NovaFX] Purchase call failed:', e);
-        result = { success: false };
-    }
-
-    if (result && result.success) {
-        state.unlockedEffects = Array.from(new Set([...state.unlockedEffects, ...ANIME_EFFECTS]));
-        saveSettings();
-        renderEffectLockState();
-    } else {
-        console.log('[NovaFX] Purchase not completed:', result);
-        if (bundleBtn) { bundleBtn.disabled = false; bundleBtn.textContent = 'Unlock all — $2.99'; }
-    }
-}
-
-// Real Microsoft Store purchase flow for the "Night Ambience Pack" add-on.
-// Mirrors promptSeasonsBundlePurchase/promptAnimeBundlePurchase — same
-// IPC pattern, different product (Rainfall, Starfield, Fireflies, Fog).
-async function promptNightBundlePurchase() {
-    if (!window.electronAPI || typeof window.electronAPI.purchaseNightBundle !== 'function') {
-        console.warn('[NovaFX] Store purchase API unavailable in this build (are you running the packaged .appx?).');
-        return;
-    }
-    const bundleBtn = document.getElementById('btn-buy-night-bundle');
-    if (bundleBtn) { bundleBtn.disabled = true; bundleBtn.textContent = 'Processing…'; }
-
-    let result;
-    try {
-        result = await window.electronAPI.purchaseNightBundle();
-    } catch (e) {
-        console.error('[NovaFX] Purchase call failed:', e);
-        result = { success: false };
-    }
-
-    if (result && result.success) {
-        state.unlockedEffects = Array.from(new Set([...state.unlockedEffects, ...NIGHT_EFFECTS]));
-        saveSettings();
-        renderEffectLockState();
-    } else {
-        console.log('[NovaFX] Purchase not completed:', result);
-        if (bundleBtn) { bundleBtn.disabled = false; bundleBtn.textContent = 'Unlock all — $2.99'; }
-    }
-}
+function promptSeasonsBundlePurchase() { return purchaseBundle('seasons'); }
+function promptAnimeBundlePurchase()   { return purchaseBundle('anime'); }
+function promptNightBundlePurchase()   { return purchaseBundle('night'); }
 
 // Re-checks ownership against the real Store license on startup, so a
 // user editing localStorage by hand can't fake an unlock — the Store's
@@ -989,22 +951,12 @@ async function verifyOwnedEffectsFromStore() {
     if (!window.electronAPI) return;
     let owned = [];
     try {
-        if (typeof window.electronAPI.checkSeasonsBundleOwned === 'function') {
-            const seasonsResult = await window.electronAPI.checkSeasonsBundleOwned();
-            if (seasonsResult && seasonsResult.available && seasonsResult.owned) {
-                owned = owned.concat(SEASON_EFFECTS);
-            }
-        }
-        if (typeof window.electronAPI.checkAnimeBundleOwned === 'function') {
-            const animeResult = await window.electronAPI.checkAnimeBundleOwned();
-            if (animeResult && animeResult.available && animeResult.owned) {
-                owned = owned.concat(ANIME_EFFECTS);
-            }
-        }
-        if (typeof window.electronAPI.checkNightBundleOwned === 'function') {
-            const nightResult = await window.electronAPI.checkNightBundleOwned();
-            if (nightResult && nightResult.available && nightResult.owned) {
-                owned = owned.concat(NIGHT_EFFECTS);
+        for (const bundle of Object.values(IAP_BUNDLES)) {
+            const checkFn = window.electronAPI[bundle.checkFn];
+            if (typeof checkFn !== 'function') continue;
+            const result = await checkFn();
+            if (result && result.available && result.owned) {
+                owned = owned.concat(bundle.effects);
             }
         }
         state.unlockedEffects = owned;
@@ -1021,40 +973,18 @@ function renderEffectLockState() {
         const owned = effect === 'none' || state.unlockedEffects.includes(effect);
         o.classList.toggle('locked', !owned);
     });
-    const seasonsBtn = document.getElementById('btn-buy-seasons-bundle');
-    if (seasonsBtn) {
-        const allOwned = SEASON_EFFECTS.every(e => state.unlockedEffects.includes(e));
-        if (!IAP_PURCHASES_ENABLED && !allOwned) {
-            seasonsBtn.textContent = 'Coming Soon';
-            seasonsBtn.disabled = true;
+
+    for (const bundle of Object.values(IAP_BUNDLES)) {
+        const btn = document.getElementById(bundle.buttonId);
+        if (!btn) continue;
+        const allOwned = bundle.effects.every(e => state.unlockedEffects.includes(e));
+        const comingSoon = !allOwned && (!IAP_PURCHASES_ENABLED || !bundle.isReady);
+        if (comingSoon) {
+            btn.textContent = 'Coming Soon';
+            btn.disabled = true;
         } else {
-            seasonsBtn.textContent = allOwned ? 'Owned' : 'Unlock all — $2.99';
-            seasonsBtn.disabled = allOwned;
-        }
-    }
-    const animeBtn = document.getElementById('btn-buy-anime-bundle');
-    if (animeBtn) {
-        const allOwned = ANIME_EFFECTS.every(e => state.unlockedEffects.includes(e));
-        if (!IAP_PURCHASES_ENABLED && !allOwned) {
-            animeBtn.textContent = 'Coming Soon';
-            animeBtn.disabled = true;
-        } else {
-            animeBtn.textContent = allOwned ? 'Owned' : 'Unlock all — $2.99';
-            animeBtn.disabled = allOwned;
-        }
-    }
-    const nightBtn = document.getElementById('btn-buy-night-bundle');
-    if (nightBtn) {
-        const allOwned = NIGHT_EFFECTS.every(e => state.unlockedEffects.includes(e));
-        // Night Ambience Pack has no real Store ID configured yet (see
-        // NIGHT_PACK_STORE_ID in main.js) — show Coming Soon regardless of
-        // IAP_PURCHASES_ENABLED, which only governs the two live bundles.
-        if (!allOwned) {
-            nightBtn.textContent = 'Coming Soon';
-            nightBtn.disabled = true;
-        } else {
-            nightBtn.textContent = 'Owned';
-            nightBtn.disabled = true;
+            btn.textContent = allOwned ? 'Owned' : 'Unlock all — $2.99';
+            btn.disabled = allOwned;
         }
     }
 }
@@ -1370,12 +1300,21 @@ function setupSettingsListeners() {
         const text = feedbackText.value.trim();
         if (!text) return;
         btnSend.disabled = true;
-        
+
+        // Pull the real version from package.json via main process instead of
+        // a hardcoded literal that silently goes stale on every release.
+        let appVersion = 'unknown';
+        try {
+            if (window.electronAPI && typeof window.electronAPI.getAppVersion === 'function') {
+                appVersion = await window.electronAPI.getAppVersion();
+            }
+        } catch (e) { /* fall back to 'unknown' */ }
+
         const templateParams = {
             feedback_type: 'NovaHub Tracker',
             feedback_text: text,
             attachments: 'None',
-            app_version: '2.1.4',
+            app_version: appVersion,
             sent_at: new Date().toLocaleString(),
             user_email: document.getElementById('feedback-email').value.trim() || 'Not provided',
         };

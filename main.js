@@ -5,14 +5,17 @@ const { scanDirectory } = require('./src/scanner');
 
 // ── Store IAP diagnostic log file ───────────────────────────────────────
 // The installed .appx has no attached console, so main-process
-// console.warn/error is invisible to us. This writes the same messages to
-// a plain text file instead: %APPDATA%/novaplus/store-iap.log (path is
-// logged to console too, for when you ARE running from a terminal).
-// Safe to delete this whole block once IAP is confirmed working.
+// console.warn/error is invisible to us. In dev this just logs to the
+// terminal; in a packaged build it also appends to a plain text file:
+// %APPDATA%/novaplus/store-iap.log. IAP is confirmed working now, so this
+// stays lightweight (console-only) unless something goes wrong in the
+// field — flip DIAGNOSTIC_FILE_LOGGING back on if IAP issues resurface.
+const DIAGNOSTIC_FILE_LOGGING = false;
 let iapLogPath = null;
 function iapLog(...args) {
     const line = `[${new Date().toISOString()}] ${args.map(a => a instanceof Error ? a.stack : (typeof a === 'object' ? JSON.stringify(a) : a)).join(' ')}\n`;
     console.log(line.trim());
+    if (!DIAGNOSTIC_FILE_LOGGING) return;
     try {
         if (!iapLogPath) iapLogPath = path.join(app.getPath('userData'), 'store-iap.log');
         fs.appendFileSync(iapLogPath, line);
@@ -139,15 +142,16 @@ ipcMain.handle('iap:purchaseNightBundle', async () => {
     return await runStoreHelper(args);
 });
 
-// ── DEBUG: Catch any unhandled error in the main process and log it.
-// These will appear in the terminal where you ran `npm start`.
-// Remove these once the freeze is diagnosed.
+// ── Catch any unhandled error in the main process and log it, so a crash
+// in the field leaves a trace instead of silently dying. Dev-only console
+// noise is skipped in packaged builds since there's no attached terminal
+// to read it anyway.
 process.on('uncaughtException', (err) => {
-    console.error('═══ MAIN PROCESS UNCAUGHT EXCEPTION ═══');
+    if (!app.isPackaged) console.error('═══ MAIN PROCESS UNCAUGHT EXCEPTION ═══');
     console.error(err);
 });
 process.on('unhandledRejection', (reason) => {
-    console.error('═══ MAIN PROCESS UNHANDLED REJECTION ═══');
+    if (!app.isPackaged) console.error('═══ MAIN PROCESS UNHANDLED REJECTION ═══');
     console.error(reason);
 });
 
@@ -178,26 +182,34 @@ function createWindow() {
     mainWindow.loadFile('index.html');
     mainWindow.setMenuBarVisibility(false);
 
-mainWindow.webContents.session.webRequest.onBeforeSendHeaders((details, callback) => {
-        const headers = { ...details.requestHeaders };
-        if (details.url.includes('omdbapi.com')) {
-            delete headers['Origin'];
-        } else {
+    // EmailJS validates the request's Origin against the domains registered
+    // for the account; Electron's default Origin (file://, or none) fails
+    // that check, so we spoof it here — but ONLY for calls actually headed
+    // to EmailJS. Scoping this by filter (rather than "everything except
+    // OMDB") means it can't leak into OMDB poster image fetches, Google
+    // Fonts requests, or anything else that happens to share the session.
+    mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
+        { urls: ['*://api.emailjs.com/*'] },
+        (details, callback) => {
+            const headers = { ...details.requestHeaders };
             headers['Origin'] = 'https://www.emailjs.com';
+            callback({ requestHeaders: headers });
         }
-        callback({ requestHeaders: headers });
-    });
+    );
 
-    // ── DEBUG: Log every renderer process crash with full details.
+    // Log renderer crashes/hangs — useful in dev, and cheap enough to keep
+    // in production in case a freeze report ever needs re-diagnosing.
     mainWindow.webContents.on('render-process-gone', (event, details) => {
         console.error('═══ RENDERER PROCESS GONE ═══', details);
     });
-    mainWindow.webContents.on('unresponsive', () => {
-        console.error('═══ RENDERER BECAME UNRESPONSIVE ═══');
-    });
-    mainWindow.webContents.on('responsive', () => {
-        console.log('── Renderer became responsive again');
-    });
+    if (!app.isPackaged) {
+        mainWindow.webContents.on('unresponsive', () => {
+            console.error('═══ RENDERER BECAME UNRESPONSIVE ═══');
+        });
+        mainWindow.webContents.on('responsive', () => {
+            console.log('── Renderer became responsive again');
+        });
+    }
 
     mainWindow.on('minimize', () => {
         if (mainWindow) {
@@ -255,6 +267,8 @@ function createPip(trackInfo) {
         }
     });
 }
+
+ipcMain.handle('app:getVersion', () => app.getVersion());
 
 // Media & Dialog Handlers
 ipcMain.handle('dialog:openDirectory', async () => {
